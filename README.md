@@ -42,6 +42,19 @@ session; "Remove" clears one out (and empties any cell using it).
 - Gap (between cells), outer border, and border colour are adjustable.
 - Export writes a PNG at the exact output size.
 
+**Head detection**
+
+Both views have a "Detect heads" action. It finds faces, expands each box to cover the whole head (hair and
+chin), and shows them as numbered green boxes for you to click — nothing is repositioned automatically.
+
+- In **Merge**, on a Cover cell, picking a head centres it in the cell. "Fit all N heads" frames every head at
+  once, falling back to the largest when the group can't fit the cell's crop.
+- In **Crop**, picking a head snaps the crop rectangle around it with padding, respecting any aspect lock.
+
+It runs on [MediaPipe](https://ai.google.dev/edge/mediapipe) BlazeFace, with the WASM runtime and model served
+from this site rather than a CDN — so detection, like everything else, happens on your device. Those assets
+(~3.5 MB gzipped) are loaded on first use only, so visitors who never press the button never download them.
+
 **Crop**
 
 - Drag inside the box to move it, grab a handle to resize; optional aspect-ratio lock.

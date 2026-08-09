@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { LAYOUTS, cellRects, coverSourceRect, renderComposite } from '../lib/compose.js'
 import { canvasToBlob, downloadBlob } from '../lib/images.js'
+import { focalPointFor } from '../lib/faces.js'
+import HeadPicker from './HeadPicker.jsx'
 
 const PRESETS = [
   { label: '1080 × 1080 · square', w: 1080, h: 1080 },
@@ -61,6 +63,8 @@ export default function MergeView({
   const dragRef = useRef(null)
   const [box, setBox] = useState({ w: 640, h: 420 })
   const [busy, setBusy] = useState(false)
+  const [picking, setPicking] = useState(false)
+  const [note, setNote] = useState('')
 
   const spec = useMemo(
     () => ({ layout, cells, photos, width: output.width, height: output.height, gap, padding, bgColor }),
@@ -90,6 +94,9 @@ export default function MergeView({
   )
   const dispW = Math.round(output.width * scale)
   const dispH = Math.round(output.height * scale)
+
+  // The fallback notice belongs to one cell; move on and it's stale.
+  useEffect(() => setNote(''), [selected, layout])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -138,6 +145,28 @@ export default function MergeView({
   function endDrag(e) {
     if (dragRef.current) e.currentTarget.releasePointerCapture?.(e.pointerId)
     dragRef.current = null
+  }
+
+  /**
+   * Point the selected cell at `target`. When the picker offers "fit all heads"
+   * it also passes the full list, so we can fall back to the largest head if the
+   * group is simply wider or taller than the cell can show.
+   */
+  function frameBox(target, allHeads) {
+    const rect = rects[selected]
+    if (!rect || !cellPhoto) return
+
+    const { sw, sh } = coverSourceRect(cellPhoto.img, rect.w, rect.h, cell.fx, cell.fy)
+    let box = target
+    let message = ''
+    if (allHeads?.length && (target.w > sw || target.h > sh)) {
+      box = allHeads[0] // sorted largest first
+      message = `All ${allHeads.length} heads don't fit this cell — framed the largest instead.`
+    }
+
+    onCellChange(selected, focalPointFor(box, cellPhoto.width, cellPhoto.height, sw, sh))
+    setNote(message)
+    setPicking(false)
   }
 
   async function exportImage() {
@@ -209,8 +238,14 @@ export default function MergeView({
             {busy ? 'Rendering…' : 'Export PNG'}
           </button>
           <span className="text-[11px] text-neutral-500">
-            {filled}/{cells.length} cells filled · output {output.width} × {output.height} px
-            {cellPhoto && cell.fit === 'cover' ? ' · drag a photo to reposition it' : ''}
+            {note ? (
+              <span className="text-amber-400">{note}</span>
+            ) : (
+              <>
+                {filled}/{cells.length} cells filled · output {output.width} × {output.height} px
+                {cellPhoto && cell.fit === 'cover' ? ' · drag a photo to reposition it' : ''}
+              </>
+            )}
           </span>
         </footer>
       </section>
@@ -359,6 +394,19 @@ export default function MergeView({
                   : 'Shows the whole photo; spare room is filled with the border colour.'}
               </p>
 
+              <button
+                onClick={() => setPicking(true)}
+                disabled={cell.fit !== 'cover'}
+                title={
+                  cell.fit === 'cover'
+                    ? 'Find heads in this photo and centre one in the cell'
+                    : 'Only applies to Cover cells — Contain already shows the whole photo'
+                }
+                className="w-full rounded-md border border-emerald-800 bg-emerald-600/10 px-2 py-1.5 text-[11px] font-medium text-emerald-200 transition hover:border-emerald-600 disabled:opacity-40"
+              >
+                Detect heads…
+              </button>
+
               <div className="flex gap-2">
                 <button
                   onClick={() => onCellChange(selected, { fx: 0.5, fy: 0.5 })}
@@ -382,6 +430,10 @@ export default function MergeView({
           )}
         </div>
       </aside>
+
+      {picking && cellPhoto && (
+        <HeadPicker photo={cellPhoto} onChoose={frameBox} onClose={() => setPicking(false)} />
+      )}
     </div>
   )
 }

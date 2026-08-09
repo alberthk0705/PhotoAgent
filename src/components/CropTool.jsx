@@ -1,5 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { baseName, canvasToBlob, downloadBlob, photoFromBlob } from '../lib/images.js'
+import { padBox, unionBox } from '../lib/faces.js'
+import { useHeadDetection } from '../lib/useHeadDetection.js'
+
+// Breathing room added around a detected head before it becomes a crop.
+const HEAD_PADDING = 0.3
 
 const MIN = 10 // smallest crop, in source pixels
 
@@ -88,6 +93,28 @@ function resizeRect(mode, start, dx, dy, aspect, imgW, imgH) {
   return { x, y, w, h }
 }
 
+/** Smallest crop containing `box` that satisfies `aspect` and fits the image. */
+function rectFromBox(box, aspect, imgW, imgH) {
+  let w = box.w
+  let h = box.h
+  if (aspect) {
+    if (w / h > aspect) h = w / aspect
+    else w = h * aspect
+  }
+  const shrink = Math.min(1, imgW / w, imgH / h)
+  w *= shrink
+  h *= shrink
+
+  const cx = box.x + box.w / 2
+  const cy = box.y + box.h / 2
+  return {
+    x: Math.min(imgW - w, Math.max(0, cx - w / 2)),
+    y: Math.min(imgH - h, Math.max(0, cy - h / 2)),
+    w,
+    h,
+  }
+}
+
 export default function CropTool({ photo, onSave }) {
   const wrapRef = useRef(null)
   const dragRef = useRef(null)
@@ -95,6 +122,13 @@ export default function CropTool({ photo, onSave }) {
   const [aspect, setAspect] = useState(null)
   const [rect, setRect] = useState(null)
   const [status, setStatus] = useState('')
+  const {
+    heads,
+    status: detection,
+    error: detectionError,
+    run: detectHeads,
+    clear: clearHeads,
+  } = useHeadDetection(photo)
 
   useLayoutEffect(() => {
     const el = wrapRef.current
@@ -165,6 +199,12 @@ export default function CropTool({ photo, onSave }) {
   function endDrag(e) {
     if (dragRef.current) e.currentTarget.releasePointerCapture?.(e.pointerId)
     dragRef.current = null
+  }
+
+  function snapToHead(box, label) {
+    setRect(rectFromBox(padBox(box, HEAD_PADDING, photo.width, photo.height), aspect, photo.width, photo.height))
+    setStatus(label)
+    clearHeads() // boxes have served their purpose; get them out of the way of dragging
   }
 
   function renderCrop() {
@@ -256,6 +296,21 @@ export default function CropTool({ photo, onSave }) {
                 />
               ))}
             </div>
+
+            {/* Detected heads sit above the crop box so they stay clickable where they overlap. */}
+            {(heads ?? []).map((h, i) => (
+              <button
+                key={i}
+                onClick={() => snapToHead(h, `Cropped to head ${i + 1}.`)}
+                title={`Crop to head ${i + 1}`}
+                style={{ left: h.x * scale, top: h.y * scale, width: h.w * scale, height: h.h * scale }}
+                className="absolute rounded-sm outline outline-2 outline-emerald-400 transition hover:bg-emerald-400/25"
+              >
+                <span className="absolute -top-2 -left-2 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-400 text-[10px] font-bold text-emerald-950">
+                  {i + 1}
+                </span>
+              </button>
+            ))}
           </div>
         </div>
 
@@ -317,6 +372,46 @@ export default function CropTool({ photo, onSave }) {
             <dt>Height</dt>
             <dd className="text-right text-neutral-200">{outH} px</dd>
           </dl>
+        </div>
+
+        <div className="space-y-2 border-t border-neutral-800 pt-4">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">Head detection</p>
+
+          <button
+            onClick={detectHeads}
+            disabled={detection === 'loading'}
+            className="w-full rounded-md border border-emerald-800 bg-emerald-600/10 px-2 py-1.5 text-[11px] font-medium text-emerald-200 transition hover:border-emerald-600 disabled:opacity-40"
+          >
+            {detection === 'loading' ? 'Scanning…' : 'Detect heads'}
+          </button>
+
+          {detection === 'done' && heads.length > 1 && (
+            <button
+              onClick={() => snapToHead(unionBox(heads), `Cropped to all ${heads.length} heads.`)}
+              className="w-full rounded-md bg-indigo-600 px-2 py-1.5 text-[11px] font-semibold text-white transition hover:bg-indigo-500"
+            >
+              Fit all {heads.length} heads
+            </button>
+          )}
+
+          {heads?.length > 0 && (
+            <button
+              onClick={clearHeads}
+              className="w-full rounded-md border border-neutral-800 px-2 py-1.5 text-[11px] text-neutral-400 transition hover:border-neutral-600"
+            >
+              Hide boxes
+            </button>
+          )}
+
+          <p className="text-[10px] leading-snug text-neutral-600">
+            {detection === 'loading' && 'Loading the detector — the first run downloads it, then it is cached.'}
+            {detection === 'error' && <span className="text-red-400">{detectionError}</span>}
+            {detection === 'done' &&
+              (heads.length === 0
+                ? 'No heads found. Try a photo where faces are larger or more front-facing.'
+                : 'Click a green box to crop to that head.')}
+            {detection === 'idle' && 'Finds faces on your device and crops around them, padding for hair and chin.'}
+          </p>
         </div>
 
         <div className="flex gap-2">
