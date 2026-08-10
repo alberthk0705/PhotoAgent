@@ -16,8 +16,21 @@ export function cellCount(layout) {
   return l.rows * l.cols
 }
 
+// Zoom multiplies the fit baseline. Cover cannot go below 1 without opening
+// gaps, which is what Contain is for.
+export const MAX_ZOOM = 8
+export const MIN_ZOOM_CONTAIN = 0.2
+
+export function minZoom(cell) {
+  return cell?.fit === 'contain' ? MIN_ZOOM_CONTAIN : 1
+}
+
+export function clampZoom(cell, zoom) {
+  return Math.min(MAX_ZOOM, Math.max(minZoom(cell), zoom))
+}
+
 export function makeCell() {
-  return { photoId: null, fit: 'cover', fx: 0.5, fy: 0.5 }
+  return { photoId: null, fit: 'cover', fx: 0.5, fy: 0.5, zoom: 1 }
 }
 
 /**
@@ -39,51 +52,118 @@ export function cellRects({ layout, width, height, gap, padding }) {
   return rects
 }
 
+const clamp01 = (n) => Math.min(1, Math.max(0, n))
+
 /**
- * Source rectangle of `img` that fills a w×h cell, honouring the focal point.
- * Only meaningful for fit: 'cover'.
+ * How `img` sits in a w×h cell: one scale, and how far it can pan on each axis.
+ *
+ * Cover and Contain differ only in the baseline scale — cover fills the cell,
+ * contain fits inside it — so zoom, panning and drawing are one shared path.
  */
-export function coverSourceRect(img, w, h, fx = 0.5, fy = 0.5) {
+export function cellGeometry(img, w, h, cell) {
   const iw = img.naturalWidth
   const ih = img.naturalHeight
-  const cellRatio = w / h
-  let sw, sh
-  if (iw / ih > cellRatio) {
-    sh = ih
-    sw = sh * cellRatio
-  } else {
-    sw = iw
-    sh = sw / cellRatio
+  const base = cell?.fit === 'contain' ? Math.min(w / iw, h / ih) : Math.max(w / iw, h / ih)
+  const scale = base * (cell?.zoom ?? 1)
+  const dw = iw * scale
+  const dh = ih * scale
+  // Nothing to pan on an axis the photo no longer overflows.
+  return { scale, dw, dh, panX: Math.max(0, dw - w), panY: Math.max(0, dh - h) }
+}
+
+/** Top-left of the drawn photo, in output pixels. Centred when it can't pan. */
+export function cellOrigin(rect, geom, cell) {
+  return {
+    x: geom.panX > 0 ? rect.x - geom.panX * clamp01(cell?.fx ?? 0.5) : rect.x + (rect.w - geom.dw) / 2,
+    y: geom.panY > 0 ? rect.y - geom.panY * clamp01(cell?.fy ?? 0.5) : rect.y + (rect.h - geom.dh) / 2,
   }
-  return { sx: (iw - sw) * fx, sy: (ih - sh) * fy, sw, sh }
+}
+
+/**
+ * Zoom to `nextZoom` while holding the image point under (px, py) still, so
+ * the photo grows around the cursor or the pinch centre rather than drifting.
+ */
+export function zoomCellAt(img, rect, cell, nextZoom, px, py) {
+  const zoom = clampZoom(cell, nextZoom)
+  const before = cellGeometry(img, rect.w, rect.h, cell)
+  const origin = cellOrigin(rect, before, cell)
+
+  // The image coordinate currently sitting under the anchor.
+  const ix = (px - origin.x) / before.scale
+  const iy = (py - origin.y) / before.scale
+
+  const after = cellGeometry(img, rect.w, rect.h, { ...cell, zoom })
+  const wantX = px - ix * after.scale
+  const wantY = py - iy * after.scale
+
+  return {
+    zoom,
+    fx: after.panX > 0 ? clamp01((rect.x - wantX) / after.panX) : 0.5,
+    fy: after.panY > 0 ? clamp01((rect.y - wantY) / after.panY) : 0.5,
+  }
+}
+
+/** Focal point that centres an image-space box (a detected head) in the cell. */
+export function focalPointForBox(box, rect, geom) {
+  const cx = (box.x + box.w / 2) * geom.scale
+  const cy = (box.y + box.h / 2) * geom.scale
+  return {
+    fx: geom.panX > 0 ? clamp01((cx - rect.w / 2) / geom.panX) : 0.5,
+    fy: geom.panY > 0 ? clamp01((cy - rect.h / 2) / geom.panY) : 0.5,
+  }
 }
 
 function drawInCell(ctx, img, rect, cell, bgColor) {
   const { x, y, w, h } = rect
+  const geom = cellGeometry(img, w, h, cell)
+  const origin = cellOrigin(rect, geom, cell)
+
   ctx.save()
   ctx.beginPath()
   ctx.rect(x, y, w, h)
   ctx.clip()
+  // Zooming out past the cell leaves bare corners; paint them like the border.
+  ctx.fillStyle = bgColor
+  ctx.fillRect(x, y, w, h)
 
-  if (cell.fit === 'contain') {
-    // The cell keeps its own background so gaps and letterbox bars match.
-    ctx.fillStyle = bgColor
-    ctx.fillRect(x, y, w, h)
-    const ratio = img.naturalWidth / img.naturalHeight
-    let dw, dh
-    if (ratio > w / h) {
-      dw = w
-      dh = w / ratio
-    } else {
-      dh = h
-      dw = h * ratio
-    }
-    ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh)
-  } else {
-    const { sx, sy, sw, sh } = coverSourceRect(img, w, h, cell.fx, cell.fy)
-    ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h)
+  // Draw only the slice of the source that lands inside the cell. At 8x on a
+  // large photo, scaling the whole image and relying on the clip would ask the
+  // rasteriser for an enormous surface for no visible gain.
+  let sx = (x - origin.x) / geom.scale
+  let sy = (y - origin.y) / geom.scale
+  let sw = w / geom.scale
+  let sh = h / geom.scale
+  let dx = x
+  let dy = y
+  let dw = w
+  let dh = h
+
+  if (sx < 0) {
+    const cut = -sx
+    sx = 0
+    sw -= cut
+    dx += cut * geom.scale
+    dw -= cut * geom.scale
+  }
+  if (sy < 0) {
+    const cut = -sy
+    sy = 0
+    sh -= cut
+    dy += cut * geom.scale
+    dh -= cut * geom.scale
+  }
+  if (sx + sw > img.naturalWidth) {
+    const cut = sx + sw - img.naturalWidth
+    sw -= cut
+    dw -= cut * geom.scale
+  }
+  if (sy + sh > img.naturalHeight) {
+    const cut = sy + sh - img.naturalHeight
+    sh -= cut
+    dh -= cut * geom.scale
   }
 
+  if (sw > 0 && sh > 0 && dw > 0 && dh > 0) ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh)
   ctx.restore()
 }
 

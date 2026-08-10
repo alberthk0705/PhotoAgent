@@ -39,8 +39,13 @@ empties any cell using it); "Clear library" removes everything from the device.
 - Output size is any value from 16 to 8000 px per side, with presets and a width/height swap. The fields accept
   free typing and only clamp when you commit with Enter or by clicking away. The preview is a scaled render of
   exactly what gets exported.
-- **Cover** fills the cell and crops the overflow — drag the photo in the preview to choose which part survives.
-  **Contain** fits the whole photo and pads with the border colour. The toggle is per cell.
+- **Cover** fills the cell and crops the overflow. **Contain** fits the whole photo and pads with the border
+  colour. The toggle is per cell.
+- **Framing each cell**: drag the photo to reposition it, and zoom with the scroll wheel, a two-finger pinch, or
+  the slider. Zoom anchors on the pointer or the pinch centre, so the photo grows around what you are looking at
+  rather than drifting away. Cover stops at 1× — below that it would no longer cover — while Contain goes down to
+  0.2×, letting a photo float inside the cell with the border colour around it. "Reset view" returns to 1× and
+  centred.
 - Gap (between cells), outer border, and border colour are adjustable.
 - **Date stamp**: one `yyyy.mm.dd` stamp on the finished composite. It is seeded from the first imported photo's
   EXIF capture date (falling back to the file's timestamp) and can be set to any date you like. Colour, corner and
@@ -115,6 +120,11 @@ src/
     useHeadDetection.js      per-photo detection state for both views
     i18n.jsx                 translations and the language provider
 ```
+
+Cover and Contain share one geometry model — they differ only in the baseline scale (fill the cell vs fit inside
+it), and zoom multiplies that baseline. Panning, zooming, head-framing and drawing are therefore one code path
+rather than two that must be kept in step. `drawInCell` also draws only the slice of the source that lands inside
+the cell, so an 8× zoom on a large photo doesn't ask the rasteriser for an enormous surface.
 
 `compose.js` is the single source of truth for how a composite looks: the preview calls `renderComposite` with a
 `scale < 1`, the exporter calls it with `scale = 1`. That is why the preview and the exported file always agree.

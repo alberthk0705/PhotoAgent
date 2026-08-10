@@ -1,8 +1,17 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { LAYOUTS, cellRects, coverSourceRect, renderComposite } from '../lib/compose.js'
+import {
+  LAYOUTS,
+  MAX_ZOOM,
+  cellGeometry,
+  cellRects,
+  clampZoom,
+  focalPointForBox,
+  minZoom,
+  renderComposite,
+  zoomCellAt,
+} from '../lib/compose.js'
 import { canvasToBlob, downloadBlob } from '../lib/images.js'
 import { stampFromInputValue } from '../lib/exif.js'
-import { focalPointFor } from '../lib/faces.js'
 import { useT } from '../lib/i18n.jsx'
 import HeadPicker from './HeadPicker.jsx'
 
@@ -26,6 +35,8 @@ const CORNERS = [
 
 const MIN_SIZE = 16
 const MAX_SIZE = 8000
+
+const clamp01 = (n) => Math.min(1, Math.max(0, n))
 
 function LayoutGlyph({ layout, active }) {
   const { rows, cols } = LAYOUTS[layout]
@@ -77,7 +88,9 @@ export default function MergeView({
   const { t } = useT()
   const canvasRef = useRef(null)
   const wrapRef = useRef(null)
-  const dragRef = useRef(null)
+  const previewRef = useRef(null)
+  const pointers = useRef(new Map()) // live pointers, so two fingers can pinch
+  const gesture = useRef(null)
   const [box, setBox] = useState({ w: 640, h: 420 })
   const [busy, setBusy] = useState(false)
   const [picking, setPicking] = useState(false)
@@ -137,6 +150,32 @@ export default function MergeView({
   // The fallback notice belongs to one cell; move on and it's stale.
   useEffect(() => setNote(''), [selected, layout])
 
+  // Wheel/trackpad zoom. Registered natively because it must call
+  // preventDefault, and React's onWheel is passive.
+  useEffect(() => {
+    const el = previewRef.current
+    if (!el) return
+
+    const onWheel = (e) => {
+      const b = el.getBoundingClientRect()
+      const px = (e.clientX - b.left) / scale
+      const py = (e.clientY - b.top) / scale
+      const index = rects.findIndex((r) => px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h)
+      if (index === -1) return
+      const cell = cells[index]
+      const photo = cell?.photoId ? photos.find((p) => p.id === cell.photoId) : null
+      if (!photo) return
+
+      e.preventDefault()
+      onSelect(index)
+      const factor = Math.exp(-e.deltaY * 0.002)
+      onCellChange(index, zoomCellAt(photo.img, rects[index], cell, (cell.zoom ?? 1) * factor, px, py))
+    }
+
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [rects, scale, cells, photos, onCellChange, onSelect])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -148,42 +187,91 @@ export default function MergeView({
   const cell = cells[selected]
   const cellPhoto = cell?.photoId ? photos.find((p) => p.id === cell.photoId) : null
 
+  /** Screen coordinates → output-image coordinates. */
+  function toOutput(clientX, clientY) {
+    const b = previewRef.current.getBoundingClientRect()
+    return { px: (clientX - b.left) / scale, py: (clientY - b.top) / scale }
+  }
+
+  function photoFor(index) {
+    const c = cells[index]
+    return c?.photoId ? photos.find((p) => p.id === c.photoId) : null
+  }
+
   function beginDrag(e, index) {
     onSelect(index)
     const c = cells[index]
-    const photo = c?.photoId ? photos.find((p) => p.id === c.photoId) : null
+    const photo = photoFor(index)
     const rect = rects[index]
-    if (!photo || !rect || c.fit !== 'cover') return
-
-    const { sw, sh } = coverSourceRect(photo.img, rect.w, rect.h, c.fx, c.fy)
-    const rangeX = photo.img.naturalWidth - sw
-    const rangeY = photo.img.naturalHeight - sh
-    if (rangeX < 1 && rangeY < 1) return // photo matches the cell exactly, nothing to pan
+    if (!photo || !rect) return
 
     e.currentTarget.setPointerCapture(e.pointerId)
-    dragRef.current = {
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+
+    // Second finger down turns the drag into a pinch.
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()]
+      gesture.current = {
+        mode: 'pinch',
+        index,
+        startDist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+        startZoom: c.zoom ?? 1,
+      }
+      return
+    }
+
+    const geom = cellGeometry(photo.img, rect.w, rect.h, c)
+    if (geom.panX < 0.5 && geom.panY < 0.5) return // fits exactly; nothing to pan
+    gesture.current = {
+      mode: 'pan',
       index,
       x: e.clientX,
       y: e.clientY,
       fx: c.fx,
       fy: c.fy,
       // Screen pixels → fraction of the pannable range.
-      kx: rangeX > 0 ? sw / rect.w / (scale * rangeX) : 0,
-      ky: rangeY > 0 ? sh / rect.h / (scale * rangeY) : 0,
+      kx: geom.panX > 0 ? 1 / (scale * geom.panX) : 0,
+      ky: geom.panY > 0 ? 1 / (scale * geom.panY) : 0,
     }
   }
 
   function onDragMove(e) {
-    const d = dragRef.current
-    if (!d) return
-    const fx = d.kx ? Math.min(1, Math.max(0, d.fx - (e.clientX - d.x) * d.kx)) : d.fx
-    const fy = d.ky ? Math.min(1, Math.max(0, d.fy - (e.clientY - d.y) * d.ky)) : d.fy
-    onCellChange(d.index, { fx, fy })
+    if (pointers.current.has(e.pointerId)) {
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    }
+    const g = gesture.current
+    if (!g) return
+
+    if (g.mode === 'pinch') {
+      if (pointers.current.size < 2) return
+      const [a, b] = [...pointers.current.values()]
+      const photo = photoFor(g.index)
+      const rect = rects[g.index]
+      if (!photo || !rect) return
+      const { px, py } = toOutput((a.x + b.x) / 2, (a.y + b.y) / 2)
+      const ratio = Math.hypot(a.x - b.x, a.y - b.y) / g.startDist
+      onCellChange(g.index, zoomCellAt(photo.img, rect, cells[g.index], g.startZoom * ratio, px, py))
+      return
+    }
+
+    const fx = g.kx ? clamp01(g.fx - (e.clientX - g.x) * g.kx) : g.fx
+    const fy = g.ky ? clamp01(g.fy - (e.clientY - g.y) * g.ky) : g.fy
+    onCellChange(g.index, { fx, fy })
   }
 
   function endDrag(e) {
-    if (dragRef.current) e.currentTarget.releasePointerCapture?.(e.pointerId)
-    dragRef.current = null
+    pointers.current.delete(e.pointerId)
+    e.currentTarget.releasePointerCapture?.(e.pointerId)
+    // A pinch ends when either finger leaves; don't silently become a pan.
+    if (pointers.current.size === 0 || gesture.current?.mode === 'pinch') gesture.current = null
+  }
+
+  /** Slider and buttons zoom about the cell centre. */
+  function setZoom(index, zoom) {
+    const photo = photoFor(index)
+    const rect = rects[index]
+    if (!photo || !rect) return
+    onCellChange(index, zoomCellAt(photo.img, rect, cells[index], zoom, rect.x + rect.w / 2, rect.y + rect.h / 2))
   }
 
   /**
@@ -195,15 +283,16 @@ export default function MergeView({
     const rect = rects[selected]
     if (!rect || !cellPhoto) return
 
-    const { sw, sh } = coverSourceRect(cellPhoto.img, rect.w, rect.h, cell.fx, cell.fy)
+    const geom = cellGeometry(cellPhoto.img, rect.w, rect.h, cell)
     let picked = target
     let message = ''
-    if (allHeads?.length && (target.w > sw || target.h > sh)) {
+    // Compare in output pixels: at higher zoom, less of the photo fits.
+    if (allHeads?.length && (target.w * geom.scale > rect.w || target.h * geom.scale > rect.h)) {
       picked = allHeads[0] // sorted largest first
       message = t('headsDontFit', { n: allHeads.length })
     }
 
-    onCellChange(selected, focalPointFor(picked, cellPhoto.width, cellPhoto.height, sw, sh))
+    onCellChange(selected, focalPointForBox(picked, rect, geom))
     setNote(message)
     setPicking(false)
   }
@@ -230,13 +319,16 @@ export default function MergeView({
           {rects.length === 0 ? (
             <p className="max-w-xs text-center text-xs text-neutral-500">{t('gapTooLarge')}</p>
           ) : (
-            <div className="checkerboard no-callout relative shadow-2xl shadow-black/50" style={{ width: dispW, height: dispH }}>
+            <div
+              ref={previewRef}
+              className="checkerboard no-callout relative shadow-2xl shadow-black/50"
+              style={{ width: dispW, height: dispH }}
+            >
               <canvas ref={canvasRef} style={{ width: dispW, height: dispH }} className="block" />
 
               {rects.map((r, i) => {
                 const c = cells[i]
                 const hasPhoto = Boolean(c?.photoId)
-                const pannable = hasPhoto && c.fit === 'cover'
                 const roomForLabel = r.w * scale > 96 && r.h * scale > 28
                 return (
                   <div
@@ -251,13 +343,13 @@ export default function MergeView({
                       top: r.y * scale,
                       width: r.w * scale,
                       height: r.h * scale,
-                      cursor: pannable ? 'grab' : 'pointer',
+                      cursor: hasPhoto ? 'grab' : 'pointer',
                     }}
                     className={`absolute flex items-center justify-center overflow-hidden transition-shadow ${
                       // Without touch-action:none a touch-drag scrolls the page
-                      // instead of panning. Only claim the gesture where panning
-                      // is actually possible, so empty cells still scroll.
-                      pannable ? 'touch-none' : ''
+                      // instead of panning, and a pinch zooms the page instead of
+                      // the photo. Empty cells keep the gesture so they can scroll.
+                      hasPhoto ? 'touch-none' : ''
                     } ${
                       selected === i
                         ? 'shadow-[inset_0_0_0_2px_rgb(99_102_241)]'
@@ -295,7 +387,7 @@ export default function MergeView({
                   w: output.width,
                   h: output.height,
                 })}
-                {cellPhoto && cell.fit === 'cover' ? t('dragHint') : ''}
+                {cellPhoto ? t('dragHint') : ''}
               </>
             )}
           </span>
@@ -532,7 +624,12 @@ export default function MergeView({
                 ].map(([value, label]) => (
                   <button
                     key={value}
-                    onClick={() => onCellChange(selected, { fit: value })}
+                    onClick={() =>
+                      onCellChange(selected, {
+                        fit: value,
+                        zoom: clampZoom({ ...cell, fit: value }, cell.zoom ?? 1),
+                      })
+                    }
                     className={`flex-1 rounded-md px-2 py-1 text-[11px] font-medium transition ${
                       cell.fit === value ? 'bg-indigo-600 text-white' : 'text-neutral-400 hover:text-neutral-100'
                     }`}
@@ -554,13 +651,25 @@ export default function MergeView({
                 {t('detectHeadsMenu')}
               </button>
 
+              <Field label={t('zoomLabel', { n: (cell.zoom ?? 1).toFixed(1) })}>
+                <input
+                  type="range"
+                  aria-label="zoom"
+                  min={minZoom(cell)}
+                  max={MAX_ZOOM}
+                  step={0.1}
+                  value={cell.zoom ?? 1}
+                  onChange={(e) => setZoom(selected, +e.target.value)}
+                  className="w-full"
+                />
+              </Field>
+
               <div className="flex gap-2">
                 <button
-                  onClick={() => onCellChange(selected, { fx: 0.5, fy: 0.5 })}
-                  disabled={cell.fit !== 'cover'}
-                  className="flex-1 rounded-md border border-neutral-800 px-2 py-1.5 text-[11px] text-neutral-300 transition hover:border-neutral-600 disabled:opacity-40"
+                  onClick={() => onCellChange(selected, { fx: 0.5, fy: 0.5, zoom: 1 })}
+                  className="flex-1 rounded-md border border-neutral-800 px-2 py-1.5 text-[11px] text-neutral-300 transition hover:border-neutral-600"
                 >
-                  {t('recentre')}
+                  {t('resetView')}
                 </button>
                 <button
                   onClick={() => onCellChange(selected, { photoId: null })}

@@ -53,7 +53,8 @@ const STRINGS = {
     detectHeadsMenu: 'Detect heads…',
     detectHeadsCoverTitle: 'Find heads in this photo and centre one in the cell',
     detectHeadsContainTitle: 'Only applies to Cover cells — Contain already shows the whole photo',
-    recentre: 'Recentre',
+    zoomLabel: 'Zoom — {n}×',
+    resetView: 'Reset view',
     clear: 'Clear',
     emptyCellHint: 'This cell is empty. Click a photo in the library to place it here.',
     cellEmptyBadge: 'Cell {n} — empty',
@@ -62,7 +63,7 @@ const STRINGS = {
     exportPng: 'Export PNG',
     rendering: 'Rendering…',
     cellsFilled: '{filled}/{total} cells filled · output {w} × {h} px',
-    dragHint: ' · drag a photo to reposition it',
+    dragHint: ' · drag to reposition, scroll or pinch to zoom',
     headsDontFit: "All {n} heads don't fit this cell — framed the largest instead.",
 
     // date stamp
@@ -169,7 +170,8 @@ const STRINGS = {
     detectHeadsMenu: '偵測人頭…',
     detectHeadsCoverTitle: '偵測照片中的人頭，並將其置中於這一格',
     detectHeadsContainTitle: '僅適用於「填滿」模式；「完整顯示」已呈現整張照片',
-    recentre: '置中',
+    zoomLabel: '縮放 — {n}×',
+    resetView: '重設檢視',
     clear: '清除',
     emptyCellHint: '這一格是空的。請在左側照片庫點選照片放入。',
     cellEmptyBadge: '第 {n} 格 — 空白',
@@ -178,7 +180,7 @@ const STRINGS = {
     exportPng: '匯出 PNG',
     rendering: '產生中…',
     cellsFilled: '已填 {filled}/{total} 格 · 輸出 {w} × {h} px',
-    dragHint: ' · 可拖曳照片調整位置',
+    dragHint: ' · 拖曳可調整位置，滾動或雙指可縮放',
     headsDontFit: '{n} 個人頭無法同時放入這一格，已改為對準最大的人頭。',
 
     // date stamp

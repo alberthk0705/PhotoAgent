@@ -107,19 +107,3 @@ export function padBox(box, fraction, imgW, imgH) {
   const dh = box.h * fraction
   return clampBox({ x: box.x - dw / 2, y: box.y - dh / 2, w: box.w + dw, h: box.h + dh }, imgW, imgH)
 }
-
-/**
- * Focal point (0..1) that centres `box` in a cover cell whose visible source
- * region is sw × sh. Clamped, so a subject near an edge lands as close to
- * centre as the crop allows.
- */
-export function focalPointFor(box, imgW, imgH, sw, sh) {
-  const cx = box.x + box.w / 2
-  const cy = box.y + box.h / 2
-  const rangeX = imgW - sw
-  const rangeY = imgH - sh
-  return {
-    fx: rangeX > 0 ? Math.min(1, Math.max(0, (cx - sw / 2) / rangeX)) : 0.5,
-    fy: rangeY > 0 ? Math.min(1, Math.max(0, (cy - sh / 2) / rangeY)) : 0.5,
-  }
-}
