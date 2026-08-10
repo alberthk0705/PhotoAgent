@@ -66,6 +66,18 @@ from this site rather than a CDN — so detection, like everything else, happens
 - "Save crop as new photo" adds the cropped region to the library as a separate photo — the original is
   untouched, and the crop is immediately available for merging. "Download PNG" saves it to disk instead.
 
+## On tablets and phones
+
+The layout stacks below 1024 px: the library becomes a horizontal strip, the settings panel moves under the
+preview, and both scroll. Beyond width, touch needed three specific things:
+
+- **`touch-action: none` on drag surfaces.** Without it a touch-drag is claimed by the scroller and the browser
+  cancels the pointer, so panning a photo or moving the crop box just scrolled the page. It is applied only to
+  surfaces that actually drag — an empty cell keeps `touch-action: auto` so you can still scroll by dragging there.
+- **No hover-only controls.** The per-thumbnail Crop/Remove buttons are always visible; they only hide behind
+  hover under `@media (hover: hover)`, where a pointer exists to reveal them.
+- **Finger-sized handles.** Crop handles grow from 12 px to 22 px under `@media (pointer: coarse)`.
+
 ## Language
 
 English and Traditional Chinese, switchable from the header. The initial choice follows the browser's language and

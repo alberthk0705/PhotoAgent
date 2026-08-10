@@ -242,10 +242,10 @@ export default function CropTool({ photo, onSave }) {
   const outH = Math.max(1, Math.round(r.h))
 
   return (
-    <div className="flex h-full min-h-0">
-      <section className="flex min-w-0 flex-1 flex-col p-5">
-        <div ref={wrapRef} className="flex min-h-0 flex-1 items-center justify-center">
-          <div className="checkerboard relative select-none shadow-2xl shadow-black/50" style={{ width: dispW, height: dispH }}>
+    <div className="flex min-h-full flex-col lg:h-full lg:min-h-0 lg:flex-row">
+      <section className="flex min-w-0 flex-1 flex-col p-4 lg:p-5">
+        <div ref={wrapRef} className="flex min-h-[42vh] flex-1 items-center justify-center lg:min-h-0">
+          <div className="checkerboard no-callout relative select-none shadow-2xl shadow-black/50" style={{ width: dispW, height: dispH }}>
             <img
               src={photo.url}
               alt={photo.name}
@@ -276,7 +276,8 @@ export default function CropTool({ photo, onSave }) {
                 width: r.w * scale,
                 height: r.h * scale,
               }}
-              className="absolute cursor-move outline outline-2 outline-white/90"
+              // touch-action:none, or dragging the box just scrolls the page on touch.
+              className="absolute cursor-move touch-none outline outline-2 outline-white/90"
             >
               {/* Rule-of-thirds guides */}
               <div className="pointer-events-none absolute inset-0 opacity-40">
@@ -294,7 +295,7 @@ export default function CropTool({ photo, onSave }) {
                   onPointerUp={endDrag}
                   onPointerCancel={endDrag}
                   style={{ ...HANDLE_POS[mode] }}
-                  className="absolute -ml-[6px] -mt-[6px] h-3 w-3 rounded-sm border border-neutral-700 bg-white"
+                  className="crop-handle absolute touch-none rounded-sm border border-neutral-700 bg-white"
                 />
               ))}
             </div>
@@ -336,7 +337,7 @@ export default function CropTool({ photo, onSave }) {
         </footer>
       </section>
 
-      <aside className="w-72 shrink-0 space-y-6 overflow-y-auto border-l border-neutral-800 bg-neutral-950 p-4">
+      <aside className="w-full shrink-0 space-y-6 border-t border-neutral-800 bg-neutral-950 p-4 lg:w-72 lg:overflow-y-auto lg:border-t-0 lg:border-l">
         <div>
           <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-500">{t('photo')}</p>
           <p className="truncate text-xs text-neutral-300" title={photo.name}>

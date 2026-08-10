@@ -30,6 +30,31 @@ body {
   background-color: #131316;
 }
 
+/* Crop handles need to be finger-sized on touch, but stay unobtrusive with a
+   mouse. Offsets are half the size so the handle centres on its corner. */
+.crop-handle {
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  margin-top: -6px;
+}
+
+@media (pointer: coarse) {
+  .crop-handle {
+    width: 22px;
+    height: 22px;
+    margin-left: -11px;
+    margin-top: -11px;
+  }
+}
+
+/* Long-pressing a photo on iOS otherwise pops the save/copy callout mid-drag. */
+.no-callout {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 input[type='range'] {
   accent-color: #6366f1;
 }

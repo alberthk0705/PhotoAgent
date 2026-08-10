@@ -224,13 +224,13 @@ export default function MergeView({
     'w-full rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-xs text-neutral-100 outline-none focus:border-indigo-500'
 
   return (
-    <div className="flex h-full min-h-0">
-      <section className="flex min-w-0 flex-1 flex-col p-5">
-        <div ref={wrapRef} className="flex min-h-0 flex-1 items-center justify-center">
+    <div className="flex min-h-full flex-col lg:h-full lg:min-h-0 lg:flex-row">
+      <section className="flex min-w-0 flex-1 flex-col p-4 lg:p-5">
+        <div ref={wrapRef} className="flex min-h-[42vh] flex-1 items-center justify-center lg:min-h-0">
           {rects.length === 0 ? (
             <p className="max-w-xs text-center text-xs text-neutral-500">{t('gapTooLarge')}</p>
           ) : (
-            <div className="checkerboard relative shadow-2xl shadow-black/50" style={{ width: dispW, height: dispH }}>
+            <div className="checkerboard no-callout relative shadow-2xl shadow-black/50" style={{ width: dispW, height: dispH }}>
               <canvas ref={canvasRef} style={{ width: dispW, height: dispH }} className="block" />
 
               {rects.map((r, i) => {
@@ -254,6 +254,11 @@ export default function MergeView({
                       cursor: pannable ? 'grab' : 'pointer',
                     }}
                     className={`absolute flex items-center justify-center overflow-hidden transition-shadow ${
+                      // Without touch-action:none a touch-drag scrolls the page
+                      // instead of panning. Only claim the gesture where panning
+                      // is actually possible, so empty cells still scroll.
+                      pannable ? 'touch-none' : ''
+                    } ${
                       selected === i
                         ? 'shadow-[inset_0_0_0_2px_rgb(99_102_241)]'
                         : 'hover:shadow-[inset_0_0_0_2px_rgb(99_102_241/0.4)]'
@@ -297,7 +302,7 @@ export default function MergeView({
         </footer>
       </section>
 
-      <aside className="w-72 shrink-0 space-y-6 overflow-y-auto border-l border-neutral-800 bg-neutral-950 p-4">
+      <aside className="w-full shrink-0 space-y-6 border-t border-neutral-800 bg-neutral-950 p-4 lg:w-72 lg:overflow-y-auto lg:border-t-0 lg:border-l">
         <Field label={t('layout')}>
           <div className="grid grid-cols-4 gap-1.5">
             {Object.keys(LAYOUTS).map((key) => (

@@ -6,7 +6,7 @@ export default function PhotoLibrary({ photos, onImport, onDelete, onCrop, onPic
   const inputRef = useRef(null)
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col border-r border-neutral-800 bg-neutral-950">
+    <aside className="flex w-full shrink-0 flex-col border-b border-neutral-800 bg-neutral-950 lg:h-full lg:w-64 lg:border-b-0 lg:border-r">
       <div className="border-b border-neutral-800 p-3">
         <button
           onClick={() => inputRef.current?.click()}
@@ -28,7 +28,7 @@ export default function PhotoLibrary({ photos, onImport, onDelete, onCrop, onPic
         <p className="mt-2 text-[11px] leading-snug text-neutral-500">{hint}</p>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 overflow-x-auto p-3 lg:overflow-x-hidden lg:overflow-y-auto">
         {photos.length === 0 ? (
           <p className="mt-6 text-center text-[11px] leading-relaxed text-neutral-600">
             {t('noPhotos')}
@@ -36,9 +36,9 @@ export default function PhotoLibrary({ photos, onImport, onDelete, onCrop, onPic
             {t('noPhotosHint')}
           </p>
         ) : (
-          <ul className="grid grid-cols-2 gap-2">
+          <ul className="flex gap-2 lg:grid lg:grid-cols-2">
             {photos.map((p) => (
-              <li key={p.id} className="group relative">
+              <li key={p.id} className="group relative w-28 shrink-0 lg:w-auto">
                 <button
                   onClick={() => onPick(p.id)}
                   title={`${p.name} — ${p.width}×${p.height}`}
@@ -51,7 +51,7 @@ export default function PhotoLibrary({ photos, onImport, onDelete, onCrop, onPic
                   <img src={p.url} alt={p.name} className="checkerboard aspect-square w-full object-cover" />
                 </button>
 
-                <div className="absolute inset-x-0 bottom-0 flex justify-between gap-1 rounded-b-lg bg-gradient-to-t from-black/85 to-transparent p-1 opacity-0 transition group-hover:opacity-100">
+                <div className="absolute inset-x-0 bottom-0 flex justify-between gap-1 rounded-b-lg bg-gradient-to-t from-black/85 to-transparent p-1 transition [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">
                   <button
                     onClick={() => onCrop(p.id)}
                     className="rounded bg-neutral-800/90 px-1.5 py-0.5 text-[10px] text-neutral-200 hover:bg-neutral-700"

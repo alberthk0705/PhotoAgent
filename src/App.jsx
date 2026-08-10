@@ -163,7 +163,8 @@ export default function App() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      {/* Stacked on tablets and phones; side-by-side once there's room. */}
+      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <PhotoLibrary
           photos={photos}
           onImport={importFiles}
