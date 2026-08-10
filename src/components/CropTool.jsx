@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useT } from '../lib/i18n.jsx'
 import { baseName, canvasToBlob, downloadBlob, photoFromBlob } from '../lib/images.js'
 import { padBox, unionBox } from '../lib/faces.js'
 import { useHeadDetection } from '../lib/useHeadDetection.js'
@@ -116,6 +117,7 @@ function rectFromBox(box, aspect, imgW, imgH) {
 }
 
 export default function CropTool({ photo, onSave }) {
+  const { t } = useT()
   const wrapRef = useRef(null)
   const dragRef = useRef(null)
   const [box, setBox] = useState({ w: 640, h: 420 })
@@ -157,8 +159,7 @@ export default function CropTool({ photo, onSave }) {
     return (
       <div className="flex h-full items-center justify-center p-8">
         <p className="max-w-xs text-center text-xs leading-relaxed text-neutral-500">
-          Select a photo from the library to crop it. The result is saved as a new photo, so the original stays
-          untouched and both stay available for merging.
+          {t('cropEmpty')}
         </p>
       </div>
     )
@@ -225,9 +226,10 @@ export default function CropTool({ photo, onSave }) {
     const { canvas, w, h } = renderCrop()
     const blob = await canvasToBlob(canvas, 'image/png')
     if (!blob) return
-    const added = await photoFromBlob(blob, `${baseName(photo.name)} (crop).png`)
+    // The crop inherits the original's capture date, not today's.
+    const added = await photoFromBlob(blob, `${baseName(photo.name)} (crop).png`, photo.date)
     onSave(added)
-    setStatus(`Saved ${w} × ${h} px to the library.`)
+    setStatus(t('savedToLibrary', { w, h }))
   }
 
   async function downloadCrop() {
@@ -301,8 +303,9 @@ export default function CropTool({ photo, onSave }) {
             {(heads ?? []).map((h, i) => (
               <button
                 key={i}
-                onClick={() => snapToHead(h, `Cropped to head ${i + 1}.`)}
-                title={`Crop to head ${i + 1}`}
+                onClick={() => snapToHead(h, t('croppedToHead', { n: i + 1 }))}
+                title={t('cropToHeadN', { n: i + 1 })}
+                data-head-box
                 style={{ left: h.x * scale, top: h.y * scale, width: h.w * scale, height: h.h * scale }}
                 className="absolute rounded-sm outline outline-2 outline-emerald-400 transition hover:bg-emerald-400/25"
               >
@@ -319,30 +322,30 @@ export default function CropTool({ photo, onSave }) {
             onClick={saveAsPhoto}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500"
           >
-            Save crop as new photo
+            {t('saveCrop')}
           </button>
           <button
             onClick={downloadCrop}
             className="rounded-lg border border-neutral-800 px-4 py-2 text-xs font-medium text-neutral-300 transition hover:border-neutral-600"
           >
-            Download PNG
+            {t('downloadPng')}
           </button>
           <span className="text-[11px] text-neutral-500">
-            {status || `Crop ${outW} × ${outH} px from ${photo.width} × ${photo.height}`}
+            {status || t('cropInfo', { w: outW, h: outH, sw: photo.width, sh: photo.height })}
           </span>
         </footer>
       </section>
 
       <aside className="w-72 shrink-0 space-y-6 overflow-y-auto border-l border-neutral-800 bg-neutral-950 p-4">
         <div>
-          <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-500">Photo</p>
+          <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-neutral-500">{t('photo')}</p>
           <p className="truncate text-xs text-neutral-300" title={photo.name}>
             {photo.name}
           </p>
         </div>
 
         <div>
-          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-neutral-500">Aspect ratio</p>
+          <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-neutral-500">{t('aspectRatio')}</p>
           <div className="grid grid-cols-4 gap-1.5">
             {RATIOS.map((opt) => (
               <button
@@ -354,43 +357,43 @@ export default function CropTool({ photo, onSave }) {
                     : 'border-neutral-800 text-neutral-400 hover:border-neutral-600'
                 }`}
               >
-                {opt.label}
+                {opt.value === null ? t('free') : opt.label}
               </button>
             ))}
           </div>
         </div>
 
         <div className="space-y-2">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">Selection</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">{t('selection')}</p>
           <dl className="grid grid-cols-2 gap-1 text-[11px] text-neutral-400">
-            <dt>X</dt>
+            <dt>{t('axisX')}</dt>
             <dd className="text-right text-neutral-200">{Math.round(r.x)} px</dd>
-            <dt>Y</dt>
+            <dt>{t('axisY')}</dt>
             <dd className="text-right text-neutral-200">{Math.round(r.y)} px</dd>
-            <dt>Width</dt>
+            <dt>{t('width')}</dt>
             <dd className="text-right text-neutral-200">{outW} px</dd>
-            <dt>Height</dt>
+            <dt>{t('height')}</dt>
             <dd className="text-right text-neutral-200">{outH} px</dd>
           </dl>
         </div>
 
         <div className="space-y-2 border-t border-neutral-800 pt-4">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">Head detection</p>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">{t('headDetection')}</p>
 
           <button
             onClick={detectHeads}
             disabled={detection === 'loading'}
             className="w-full rounded-md border border-emerald-800 bg-emerald-600/10 px-2 py-1.5 text-[11px] font-medium text-emerald-200 transition hover:border-emerald-600 disabled:opacity-40"
           >
-            {detection === 'loading' ? 'Scanning…' : 'Detect heads'}
+            {detection === 'loading' ? t('scanning') : t('detectHeads')}
           </button>
 
           {detection === 'done' && heads.length > 1 && (
             <button
-              onClick={() => snapToHead(unionBox(heads), `Cropped to all ${heads.length} heads.`)}
+              onClick={() => snapToHead(unionBox(heads), t('croppedToAll', { n: heads.length }))}
               className="w-full rounded-md bg-indigo-600 px-2 py-1.5 text-[11px] font-semibold text-white transition hover:bg-indigo-500"
             >
-              Fit all {heads.length} heads
+              {t('fitAllHeads', { n: heads.length })}
             </button>
           )}
 
@@ -399,18 +402,15 @@ export default function CropTool({ photo, onSave }) {
               onClick={clearHeads}
               className="w-full rounded-md border border-neutral-800 px-2 py-1.5 text-[11px] text-neutral-400 transition hover:border-neutral-600"
             >
-              Hide boxes
+              {t('hideBoxes')}
             </button>
           )}
 
           <p className="text-[10px] leading-snug text-neutral-600">
-            {detection === 'loading' && 'Loading the detector — the first run downloads it, then it is cached.'}
+            {detection === 'loading' && t('detectLoadingHelp')}
             {detection === 'error' && <span className="text-red-400">{detectionError}</span>}
-            {detection === 'done' &&
-              (heads.length === 0
-                ? 'No heads found. Try a photo where faces are larger or more front-facing.'
-                : 'Click a green box to crop to that head.')}
-            {detection === 'idle' && 'Finds faces on your device and crops around them, padding for hair and chin.'}
+            {detection === 'done' && (heads.length === 0 ? t('detectNoneHelp') : t('detectDoneHelp'))}
+            {detection === 'idle' && t('detectIdleHelp')}
           </p>
         </div>
 
@@ -419,19 +419,18 @@ export default function CropTool({ photo, onSave }) {
             onClick={() => setRect(centeredRect(photo.width, photo.height, aspect))}
             className="flex-1 rounded-md border border-neutral-800 px-2 py-1.5 text-[11px] text-neutral-300 transition hover:border-neutral-600"
           >
-            Reset
+            {t('reset')}
           </button>
           <button
             onClick={() => setRect(centeredRect(photo.width, photo.height, aspect, 1))}
             className="flex-1 rounded-md border border-neutral-800 px-2 py-1.5 text-[11px] text-neutral-300 transition hover:border-neutral-600"
           >
-            Select all
+            {t('selectAll')}
           </button>
         </div>
 
         <p className="text-[10px] leading-snug text-neutral-600">
-          Drag inside the box to move it, or grab a handle to resize. Saving adds the cropped region to the library
-          as a separate photo — the original is never modified.
+          {t('cropHelp')}
         </p>
       </aside>
     </div>

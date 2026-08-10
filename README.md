@@ -32,14 +32,19 @@ session; "Remove" clears one out (and empties any cell using it).
 
 **Merge**
 
-- Layouts: `1 × 2`, `2 × 1`, `2 × 2` (rows × columns).
+- Layouts: `1 × 2`, `2 × 1`, `2 × 2`, `2 × 4`, `4 × 2`, `3 × 3`, `4 × 4` (rows × columns). Photos keep their
+  cell assignments when you switch between layouts.
 - Click a cell in the preview to select it, then click a photo in the library to place it there. Selection then
   advances to the next empty cell, so filling a grid is one click per photo.
-- Output size is set in pixels, with presets and a width/height swap. The preview is a scaled render of exactly
-  what gets exported.
+- Output size is any value from 16 to 8000 px per side, with presets and a width/height swap. The fields accept
+  free typing and only clamp when you commit with Enter or by clicking away. The preview is a scaled render of
+  exactly what gets exported.
 - **Cover** fills the cell and crops the overflow — drag the photo in the preview to choose which part survives.
   **Contain** fits the whole photo and pads with the border colour. The toggle is per cell.
 - Gap (between cells), outer border, and border colour are adjustable.
+- **Date stamp**: one `yyyy.mm.dd` stamp on the finished composite. It is seeded from the first imported photo's
+  EXIF capture date (falling back to the file's timestamp) and can be set to any date you like. Colour, corner and
+  margin are adjustable, and the size is a percentage of the output's short side so it scales with the export.
 - Export writes a PNG at the exact output size.
 
 **Head detection**
@@ -61,6 +66,12 @@ from this site rather than a CDN — so detection, like everything else, happens
 - "Save crop as new photo" adds the cropped region to the library as a separate photo — the original is
   untouched, and the crop is immediately available for merging. "Download PNG" saves it to disk instead.
 
+## Language
+
+English and Traditional Chinese, switchable from the header. The initial choice follows the browser's language and
+is remembered in `localStorage`. Strings live in `src/lib/i18n.jsx`; a key missing from one language falls back to
+English rather than rendering blank.
+
 ## Layout of the code
 
 ```
@@ -73,6 +84,10 @@ src/
   lib/
     compose.js               layout geometry + canvas rendering (shared by preview and export)
     images.js                file → photo records, canvas → blob/download helpers
+    exif.js                  capture date from JPEG EXIF, and the stamp's date formatting
+    faces.js                 MediaPipe head detection, loaded on demand
+    useHeadDetection.js      per-photo detection state for both views
+    i18n.jsx                 translations and the language provider
 ```
 
 `compose.js` is the single source of truth for how a composite looks: the preview calls `renderComposite` with a

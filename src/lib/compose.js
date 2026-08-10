@@ -3,7 +3,13 @@ export const LAYOUTS = {
   '1x2': { rows: 1, cols: 2, label: '1 × 2' },
   '2x1': { rows: 2, cols: 1, label: '2 × 1' },
   '2x2': { rows: 2, cols: 2, label: '2 × 2' },
+  '2x4': { rows: 2, cols: 4, label: '2 × 4' },
+  '4x2': { rows: 4, cols: 2, label: '4 × 2' },
+  '3x3': { rows: 3, cols: 3, label: '3 × 3' },
+  '4x4': { rows: 4, cols: 4, label: '4 × 4' },
 }
+
+export const DATE_CORNERS = ['tl', 'tr', 'bl', 'br']
 
 export function cellCount(layout) {
   const l = LAYOUTS[layout]
@@ -82,11 +88,39 @@ function drawInCell(ctx, img, rect, cell, bgColor) {
 }
 
 /**
+ * Date stamp, drawn last so it sits above photos and borders alike.
+ * Sizes are relative to the output's short side, so the stamp keeps its
+ * proportions whether you export at 800 px or 8000 px.
+ */
+function drawDateStamp(ctx, W, H, date, scale) {
+  if (!date?.enabled || !date.text) return
+
+  const fontSize = Math.max(6, Math.round((Math.min(W, H) * date.size) / 100))
+  const margin = date.margin * scale
+  ctx.save()
+  ctx.font = `600 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`
+  ctx.fillStyle = date.color
+  ctx.textAlign = date.corner === 'tr' || date.corner === 'br' ? 'right' : 'left'
+  ctx.textBaseline = date.corner === 'bl' || date.corner === 'br' ? 'bottom' : 'top'
+
+  // A soft dark halo keeps the stamp readable over pale photos without
+  // looking like a drop shadow at export size.
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.55)'
+  ctx.shadowBlur = Math.max(1, fontSize * 0.12)
+  ctx.shadowOffsetY = Math.max(1, fontSize * 0.04)
+
+  const x = ctx.textAlign === 'right' ? W - margin : margin
+  const y = ctx.textBaseline === 'bottom' ? H - margin : margin
+  ctx.fillText(date.text, x, y)
+  ctx.restore()
+}
+
+/**
  * Draw the whole composite onto `canvas`.
  * `scale` < 1 renders a preview; the exported image always uses scale 1.
  */
 export function renderComposite(canvas, spec, scale = 1) {
-  const { cells, photos, width, height, gap, padding, bgColor } = spec
+  const { cells, photos, width, height, gap, padding, bgColor, date } = spec
 
   const W = Math.max(1, Math.round(width * scale))
   const H = Math.max(1, Math.round(height * scale))
@@ -108,6 +142,8 @@ export function renderComposite(canvas, spec, scale = 1) {
     if (!photo) return
     drawInCell(ctx, photo.img, rect, cell, bgColor)
   })
+
+  drawDateStamp(ctx, W, H, date, scale)
 
   return rects
 }

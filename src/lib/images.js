@@ -1,3 +1,5 @@
+import { readCaptureDate } from './exif.js'
+
 let counter = 0
 const nextId = () => `p${++counter}`
 
@@ -11,7 +13,7 @@ function loadImage(url) {
 }
 
 /** Turn a File (or Blob) into a photo record the rest of the app understands. */
-export async function photoFromBlob(blob, name) {
+export async function photoFromBlob(blob, name, date = null) {
   const url = URL.createObjectURL(blob)
   const img = await loadImage(url)
   return {
@@ -21,12 +23,21 @@ export async function photoFromBlob(blob, name) {
     img,
     width: img.naturalWidth,
     height: img.naturalHeight,
+    date,
   }
+}
+
+async function photoFromFile(file) {
+  // EXIF capture date when the camera recorded one, otherwise the file's own
+  // timestamp — which is the best a screenshot or a stripped image can offer.
+  const captured = await readCaptureDate(file)
+  const date = captured ?? (file.lastModified ? new Date(file.lastModified) : null)
+  return photoFromBlob(file, file.name, date)
 }
 
 export async function photosFromFiles(fileList) {
   const files = Array.from(fileList).filter((f) => f.type.startsWith('image/'))
-  const settled = await Promise.allSettled(files.map((f) => photoFromBlob(f, f.name)))
+  const settled = await Promise.allSettled(files.map(photoFromFile))
   return settled.filter((r) => r.status === 'fulfilled').map((r) => r.value)
 }
 

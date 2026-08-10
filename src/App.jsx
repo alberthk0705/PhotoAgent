@@ -4,8 +4,12 @@ import MergeView from './components/MergeView.jsx'
 import CropTool from './components/CropTool.jsx'
 import { cellCount, makeCell } from './lib/compose.js'
 import { photosFromFiles, releasePhoto } from './lib/images.js'
+import { formatStampDate } from './lib/exif.js'
+import { LANGUAGES, useT } from './lib/i18n.jsx'
 
 export default function App() {
+  const { t, lang, setLang } = useT()
+
   const [photos, setPhotos] = useState([])
   const [tab, setTab] = useState('merge')
   const [cropId, setCropId] = useState(null)
@@ -19,6 +23,14 @@ export default function App() {
   const [gap, setGap] = useState(16)
   const [padding, setPadding] = useState(16)
   const [bgColor, setBgColor] = useState('#ffffff')
+  const [date, setDate] = useState({
+    enabled: true,
+    text: '',
+    color: '#ff9d2e',
+    corner: 'br',
+    margin: 32,
+    size: 4,
+  })
 
   const changeLayout = useCallback((next) => {
     const n = cellCount(next)
@@ -31,14 +43,21 @@ export default function App() {
     setCells((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)))
   }, [])
 
+  const updateDate = useCallback((patch) => setDate((prev) => ({ ...prev, ...patch })), [])
+
   const addPhotos = useCallback((added) => {
     if (!added.length) return
     setPhotos((prev) => [...prev, ...added])
+
     // Drop new photos into whatever cells are still empty, in order.
     setCells((prev) => {
       const queue = [...added]
       return prev.map((c) => (c.photoId || !queue.length ? c : { ...c, photoId: queue.shift().id }))
     })
+
+    // Seed the stamp from the first photo that arrives; never overwrite a value
+    // the user has already set.
+    setDate((prev) => (prev.text ? prev : { ...prev, text: formatStampDate(added[0].date) }))
   }, [])
 
   const importFiles = useCallback(
@@ -110,8 +129,8 @@ export default function App() {
         </h1>
         <nav className="flex gap-1 rounded-lg bg-neutral-900 p-1">
           {[
-            ['merge', 'Merge'],
-            ['crop', 'Crop'],
+            ['merge', t('tabMerge')],
+            ['crop', t('tabCrop')],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -124,9 +143,24 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <span className="ml-auto text-xs text-neutral-500">
-          Everything runs in your browser — no photo ever leaves this machine.
-        </span>
+
+        <span className="ml-auto hidden text-xs text-neutral-500 lg:inline">{t('tagline')}</span>
+
+        <div className="flex gap-1 rounded-lg bg-neutral-900 p-1" title={t('language')}>
+          {LANGUAGES.map((l) => (
+            <button
+              key={l.code}
+              onClick={() => setLang(l.code)}
+              lang={l.code === 'zh' ? 'zh-Hant' : 'en'}
+              title={l.name}
+              className={`rounded-md px-2 py-1 text-xs font-medium transition ${
+                lang === l.code ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:text-neutral-100'
+              }`}
+            >
+              {l.label}
+            </button>
+          ))}
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -137,7 +171,7 @@ export default function App() {
           onCrop={openInCrop}
           onPick={tab === 'merge' ? assignToSelectedCell : setCropId}
           activeId={tab === 'crop' ? cropId : cells[selected]?.photoId}
-          hint={tab === 'merge' ? `Click a photo to place it in cell ${selected + 1}` : 'Click a photo to crop it'}
+          hint={tab === 'merge' ? t('hintPlaceInCell', { n: selected + 1 }) : t('hintClickToCrop')}
         />
 
         <main className="min-w-0 flex-1 overflow-auto">
@@ -158,6 +192,8 @@ export default function App() {
               onPaddingChange={setPadding}
               bgColor={bgColor}
               onBgColorChange={setBgColor}
+              date={date}
+              onDateChange={updateDate}
             />
           ) : (
             <CropTool photo={cropTarget} onSave={(p) => addPhotos([p])} />
@@ -168,7 +204,7 @@ export default function App() {
       {dragging && (
         <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-indigo-950/60 backdrop-blur-sm">
           <p className="rounded-xl border-2 border-dashed border-indigo-400 px-8 py-6 text-sm font-medium text-indigo-100">
-            Drop images to import
+            {t('dropToImport')}
           </p>
         </div>
       )}

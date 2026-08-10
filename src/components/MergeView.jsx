@@ -1,32 +1,46 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { LAYOUTS, cellRects, coverSourceRect, renderComposite } from '../lib/compose.js'
 import { canvasToBlob, downloadBlob } from '../lib/images.js'
+import { stampFromInputValue } from '../lib/exif.js'
 import { focalPointFor } from '../lib/faces.js'
+import { useT } from '../lib/i18n.jsx'
 import HeadPicker from './HeadPicker.jsx'
 
 const PRESETS = [
-  { label: '1080 × 1080 · square', w: 1080, h: 1080 },
-  { label: '1920 × 1080 · 16:9', w: 1920, h: 1080 },
-  { label: '1080 × 1920 · 9:16', w: 1080, h: 1920 },
-  { label: '2048 × 1536 · 4:3', w: 2048, h: 1536 },
-  { label: '3000 × 2000 · 3:2', w: 3000, h: 2000 },
+  { w: 1080, h: 1080, noteKey: 'presetSquare' },
+  { w: 1920, h: 1080, note: '16:9' },
+  { w: 1080, h: 1920, note: '9:16' },
+  { w: 2048, h: 1536, note: '4:3' },
+  { w: 3000, h: 2000, note: '3:2' },
 ]
 
 const SWATCHES = ['#ffffff', '#000000', '#f5f5f4', '#1c1917', '#e11d48', '#2563eb']
+const DATE_SWATCHES = ['#ff9d2e', '#ffffff', '#000000', '#f43f5e', '#22d3ee']
+
+const CORNERS = [
+  ['tl', 'cornerTL'],
+  ['tr', 'cornerTR'],
+  ['bl', 'cornerBL'],
+  ['br', 'cornerBR'],
+]
 
 const MIN_SIZE = 16
 const MAX_SIZE = 8000
-const clampSize = (n) => Math.min(MAX_SIZE, Math.max(MIN_SIZE, Math.round(n) || MIN_SIZE))
 
 function LayoutGlyph({ layout, active }) {
   const { rows, cols } = LAYOUTS[layout]
   return (
     <div
-      className="grid gap-[2px]"
-      style={{ gridTemplateColumns: `repeat(${cols}, 1fr)`, gridTemplateRows: `repeat(${rows}, 1fr)`, width: 26, height: 26 }}
+      className="grid gap-[1.5px]"
+      style={{
+        gridTemplateColumns: `repeat(${cols}, 1fr)`,
+        gridTemplateRows: `repeat(${rows}, 1fr)`,
+        width: 24,
+        height: 24,
+      }}
     >
       {Array.from({ length: rows * cols }, (_, i) => (
-        <span key={i} className={`rounded-[2px] ${active ? 'bg-white' : 'bg-neutral-500'}`} />
+        <span key={i} className={`rounded-[1px] ${active ? 'bg-white' : 'bg-neutral-500'}`} />
       ))}
     </div>
   )
@@ -57,7 +71,10 @@ export default function MergeView({
   onPaddingChange,
   bgColor,
   onBgColorChange,
+  date,
+  onDateChange,
 }) {
+  const { t } = useT()
   const canvasRef = useRef(null)
   const wrapRef = useRef(null)
   const dragRef = useRef(null)
@@ -66,9 +83,34 @@ export default function MergeView({
   const [picking, setPicking] = useState(false)
   const [note, setNote] = useState('')
 
+  // Size fields hold raw text while typing. Clamping on every keystroke made it
+  // impossible to type any value whose prefix falls below the minimum — "200"
+  // became "16" the moment you typed "2".
+  const [sizeText, setSizeText] = useState({ w: String(output.width), h: String(output.height) })
+  useEffect(() => {
+    setSizeText({ w: String(output.width), h: String(output.height) })
+  }, [output.width, output.height])
+
+  function commitSize(field) {
+    const raw = parseInt(sizeText[field === 'width' ? 'w' : 'h'], 10)
+    const next = Number.isFinite(raw) ? Math.min(MAX_SIZE, Math.max(MIN_SIZE, raw)) : output[field]
+    onOutputChange({ ...output, [field]: next })
+    setSizeText((prev) => ({ ...prev, [field === 'width' ? 'w' : 'h']: String(next) }))
+  }
+
   const spec = useMemo(
-    () => ({ layout, cells, photos, width: output.width, height: output.height, gap, padding, bgColor }),
-    [layout, cells, photos, output.width, output.height, gap, padding, bgColor],
+    () => ({
+      layout,
+      cells,
+      photos,
+      width: output.width,
+      height: output.height,
+      gap,
+      padding,
+      bgColor,
+      date,
+    }),
+    [layout, cells, photos, output.width, output.height, gap, padding, bgColor, date],
   )
 
   const rects = useMemo(
@@ -88,10 +130,7 @@ export default function MergeView({
     return () => ro.disconnect()
   }, [])
 
-  const scale = Math.max(
-    0.02,
-    Math.min(3, (box.w - 8) / output.width, (box.h - 8) / output.height),
-  )
+  const scale = Math.max(0.02, Math.min(3, (box.w - 8) / output.width, (box.h - 8) / output.height))
   const dispW = Math.round(output.width * scale)
   const dispH = Math.round(output.height * scale)
 
@@ -157,14 +196,14 @@ export default function MergeView({
     if (!rect || !cellPhoto) return
 
     const { sw, sh } = coverSourceRect(cellPhoto.img, rect.w, rect.h, cell.fx, cell.fy)
-    let box = target
+    let picked = target
     let message = ''
     if (allHeads?.length && (target.w > sw || target.h > sh)) {
-      box = allHeads[0] // sorted largest first
-      message = `All ${allHeads.length} heads don't fit this cell — framed the largest instead.`
+      picked = allHeads[0] // sorted largest first
+      message = t('headsDontFit', { n: allHeads.length })
     }
 
-    onCellChange(selected, focalPointFor(box, cellPhoto.width, cellPhoto.height, sw, sh))
+    onCellChange(selected, focalPointFor(picked, cellPhoto.width, cellPhoto.height, sw, sh))
     setNote(message)
     setPicking(false)
   }
@@ -181,14 +220,15 @@ export default function MergeView({
     }
   }
 
+  const sizeInputClass =
+    'w-full rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-xs text-neutral-100 outline-none focus:border-indigo-500'
+
   return (
     <div className="flex h-full min-h-0">
       <section className="flex min-w-0 flex-1 flex-col p-5">
         <div ref={wrapRef} className="flex min-h-0 flex-1 items-center justify-center">
           {rects.length === 0 ? (
-            <p className="max-w-xs text-center text-xs text-neutral-500">
-              The gap and border are larger than the output size — reduce them, or make the output bigger.
-            </p>
+            <p className="max-w-xs text-center text-xs text-neutral-500">{t('gapTooLarge')}</p>
           ) : (
             <div className="checkerboard relative shadow-2xl shadow-black/50" style={{ width: dispW, height: dispH }}>
               <canvas ref={canvasRef} style={{ width: dispW, height: dispH }} className="block" />
@@ -197,9 +237,11 @@ export default function MergeView({
                 const c = cells[i]
                 const hasPhoto = Boolean(c?.photoId)
                 const pannable = hasPhoto && c.fit === 'cover'
+                const roomForLabel = r.w * scale > 96 && r.h * scale > 28
                 return (
                   <div
                     key={i}
+                    data-cell-index={i}
                     onPointerDown={(e) => beginDrag(e, i)}
                     onPointerMove={onDragMove}
                     onPointerUp={endDrag}
@@ -211,15 +253,15 @@ export default function MergeView({
                       height: r.h * scale,
                       cursor: pannable ? 'grab' : 'pointer',
                     }}
-                    className={`absolute flex items-center justify-center transition-shadow ${
+                    className={`absolute flex items-center justify-center overflow-hidden transition-shadow ${
                       selected === i
                         ? 'shadow-[inset_0_0_0_2px_rgb(99_102_241)]'
                         : 'hover:shadow-[inset_0_0_0_2px_rgb(99_102_241/0.4)]'
                     }`}
                   >
-                    {!hasPhoto && (
+                    {!hasPhoto && roomForLabel && (
                       <span className="pointer-events-none rounded bg-black/55 px-2 py-1 text-[11px] text-neutral-300">
-                        Cell {i + 1} — empty
+                        {t('cellEmptyBadge', { n: i + 1 })}
                       </span>
                     )}
                   </div>
@@ -235,15 +277,20 @@ export default function MergeView({
             disabled={filled === 0 || busy || rects.length === 0}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
           >
-            {busy ? 'Rendering…' : 'Export PNG'}
+            {busy ? t('rendering') : t('exportPng')}
           </button>
           <span className="text-[11px] text-neutral-500">
             {note ? (
               <span className="text-amber-400">{note}</span>
             ) : (
               <>
-                {filled}/{cells.length} cells filled · output {output.width} × {output.height} px
-                {cellPhoto && cell.fit === 'cover' ? ' · drag a photo to reposition it' : ''}
+                {t('cellsFilled', {
+                  filled,
+                  total: cells.length,
+                  w: output.width,
+                  h: output.height,
+                })}
+                {cellPhoto && cell.fit === 'cover' ? t('dragHint') : ''}
               </>
             )}
           </span>
@@ -251,21 +298,21 @@ export default function MergeView({
       </section>
 
       <aside className="w-72 shrink-0 space-y-6 overflow-y-auto border-l border-neutral-800 bg-neutral-950 p-4">
-        <Field label="Layout">
-          <div className="flex gap-2">
+        <Field label={t('layout')}>
+          <div className="grid grid-cols-4 gap-1.5">
             {Object.keys(LAYOUTS).map((key) => (
               <button
                 key={key}
                 onClick={() => onLayoutChange(key)}
                 title={LAYOUTS[key].label}
-                className={`flex flex-1 flex-col items-center gap-1.5 rounded-lg border px-2 py-2 transition ${
+                className={`flex flex-col items-center gap-1 rounded-lg border px-1 py-1.5 transition ${
                   layout === key
                     ? 'border-indigo-500 bg-indigo-600/15'
                     : 'border-neutral-800 hover:border-neutral-600'
                 }`}
               >
                 <LayoutGlyph layout={key} active={layout === key} />
-                <span className={`text-[10px] ${layout === key ? 'text-indigo-200' : 'text-neutral-500'}`}>
+                <span className={`text-[9px] ${layout === key ? 'text-indigo-200' : 'text-neutral-500'}`}>
                   {LAYOUTS[key].label}
                 </span>
               </button>
@@ -273,28 +320,32 @@ export default function MergeView({
           </div>
         </Field>
 
-        <Field label="Output size (px)">
+        <Field label={t('outputSize')}>
           <div className="flex items-center gap-2">
             <input
-              type="number"
-              value={output.width}
-              min={MIN_SIZE}
-              max={MAX_SIZE}
-              onChange={(e) => onOutputChange({ ...output, width: clampSize(+e.target.value) })}
-              className="w-full rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-xs text-neutral-100 outline-none focus:border-indigo-500"
+              type="text"
+              inputMode="numeric"
+              value={sizeText.w}
+              aria-label="width"
+              onChange={(e) => setSizeText((p) => ({ ...p, w: e.target.value }))}
+              onBlur={() => commitSize('width')}
+              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+              className={sizeInputClass}
             />
             <span className="text-xs text-neutral-600">×</span>
             <input
-              type="number"
-              value={output.height}
-              min={MIN_SIZE}
-              max={MAX_SIZE}
-              onChange={(e) => onOutputChange({ ...output, height: clampSize(+e.target.value) })}
-              className="w-full rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-xs text-neutral-100 outline-none focus:border-indigo-500"
+              type="text"
+              inputMode="numeric"
+              value={sizeText.h}
+              aria-label="height"
+              onChange={(e) => setSizeText((p) => ({ ...p, h: e.target.value }))}
+              onBlur={() => commitSize('height')}
+              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+              className={sizeInputClass}
             />
             <button
               onClick={() => onOutputChange({ width: output.height, height: output.width })}
-              title="Swap width and height"
+              title={t('swapSides')}
               className="rounded-md border border-neutral-800 px-2 py-1.5 text-xs text-neutral-400 hover:border-neutral-600 hover:text-neutral-100"
             >
               ⇄
@@ -308,27 +359,21 @@ export default function MergeView({
             }}
             className="mt-2 w-full rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-xs text-neutral-400 outline-none focus:border-indigo-500"
           >
-            <option value="">Presets…</option>
+            <option value="">{t('presets')}</option>
             {PRESETS.map((p, i) => (
-              <option key={p.label} value={i}>
-                {p.label}
+              <option key={`${p.w}x${p.h}`} value={i}>
+                {p.w} × {p.h} · {p.noteKey ? t(p.noteKey) : p.note}
               </option>
             ))}
           </select>
+          <p className="mt-1 text-[10px] text-neutral-600">{t('sizeRange', { min: MIN_SIZE, max: MAX_SIZE })}</p>
         </Field>
 
-        <Field label={`Gap between cells — ${gap} px`}>
-          <input
-            type="range"
-            min={0}
-            max={200}
-            value={gap}
-            onChange={(e) => onGapChange(+e.target.value)}
-            className="w-full"
-          />
+        <Field label={t('gapLabel', { n: gap })}>
+          <input type="range" min={0} max={200} value={gap} onChange={(e) => onGapChange(+e.target.value)} className="w-full" />
         </Field>
 
-        <Field label={`Outer border — ${padding} px`}>
+        <Field label={t('borderLabel', { n: padding })}>
           <input
             type="range"
             min={0}
@@ -339,7 +384,7 @@ export default function MergeView({
           />
         </Field>
 
-        <Field label="Border colour">
+        <Field label={t('borderColour')}>
           <div className="flex items-center gap-2">
             <input
               type="color"
@@ -361,9 +406,112 @@ export default function MergeView({
           </div>
         </Field>
 
+        {/* ---- date stamp ---- */}
+        <div className="space-y-3 border-t border-neutral-800 pt-4">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={date.enabled}
+              onChange={(e) => onDateChange({ enabled: e.target.checked })}
+              className="h-3.5 w-3.5 accent-indigo-500"
+            />
+            <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">{t('dateStamp')}</span>
+          </label>
+
+          {date.enabled && (
+            <>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  aria-label={t('dateValue')}
+                  value={date.text ? date.text.replace(/\./g, '-') : ''}
+                  onChange={(e) => onDateChange({ text: stampFromInputValue(e.target.value) })}
+                  className="w-full rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-xs text-neutral-100 outline-none focus:border-indigo-500"
+                />
+                <button
+                  onClick={() => onDateChange({ text: '' })}
+                  title={t('clear')}
+                  className="rounded-md border border-neutral-800 px-2 py-1.5 text-xs text-neutral-400 hover:border-neutral-600 hover:text-neutral-100"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="font-mono text-[11px] text-neutral-400">{date.text || '—'}</p>
+
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  aria-label={t('dateColour')}
+                  value={date.color}
+                  onChange={(e) => onDateChange({ color: e.target.value })}
+                  className="h-8 w-10 rounded-md"
+                />
+                {DATE_SWATCHES.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => onDateChange({ color: c })}
+                    title={c}
+                    style={{ background: c }}
+                    className={`h-6 w-6 rounded-md border transition ${
+                      date.color.toLowerCase() === c ? 'border-indigo-400' : 'border-neutral-700 hover:border-neutral-500'
+                    }`}
+                  />
+                ))}
+              </div>
+
+              <div>
+                <span className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-neutral-500">
+                  {t('dateCorner')}
+                </span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {CORNERS.map(([value, key]) => (
+                    <button
+                      key={value}
+                      onClick={() => onDateChange({ corner: value })}
+                      className={`rounded-md border px-2 py-1.5 text-[11px] transition ${
+                        date.corner === value
+                          ? 'border-indigo-500 bg-indigo-600/15 text-indigo-200'
+                          : 'border-neutral-800 text-neutral-400 hover:border-neutral-600'
+                      }`}
+                    >
+                      {t(key)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <Field label={t('dateMargin', { n: date.margin })}>
+                <input
+                  type="range"
+                  min={0}
+                  max={200}
+                  value={date.margin}
+                  onChange={(e) => onDateChange({ margin: +e.target.value })}
+                  className="w-full"
+                />
+              </Field>
+
+              <Field label={t('dateSize', { n: date.size })}>
+                <input
+                  type="range"
+                  min={1}
+                  max={12}
+                  step={0.5}
+                  value={date.size}
+                  onChange={(e) => onDateChange({ size: +e.target.value })}
+                  className="w-full"
+                />
+              </Field>
+
+              <p className="text-[10px] leading-snug text-neutral-600">{t('dateHelp')}</p>
+            </>
+          )}
+        </div>
+
+        {/* ---- selected cell ---- */}
         <div className="space-y-3 border-t border-neutral-800 pt-4">
           <p className="text-[11px] font-medium uppercase tracking-wide text-neutral-500">
-            Cell {selected + 1} of {cells.length}
+            {t('cellOf', { n: selected + 1, m: cells.length })}
           </p>
 
           {cellPhoto ? (
@@ -374,8 +522,8 @@ export default function MergeView({
 
               <div className="flex gap-1 rounded-lg bg-neutral-900 p-1">
                 {[
-                  ['cover', 'Cover'],
-                  ['contain', 'Contain'],
+                  ['cover', t('cover')],
+                  ['contain', t('contain')],
                 ].map(([value, label]) => (
                   <button
                     key={value}
@@ -389,22 +537,16 @@ export default function MergeView({
                 ))}
               </div>
               <p className="text-[10px] leading-snug text-neutral-600">
-                {cell.fit === 'cover'
-                  ? 'Fills the cell and crops the overflow. Drag the photo in the preview to choose what stays.'
-                  : 'Shows the whole photo; spare room is filled with the border colour.'}
+                {cell.fit === 'cover' ? t('coverHelp') : t('containHelp')}
               </p>
 
               <button
                 onClick={() => setPicking(true)}
                 disabled={cell.fit !== 'cover'}
-                title={
-                  cell.fit === 'cover'
-                    ? 'Find heads in this photo and centre one in the cell'
-                    : 'Only applies to Cover cells — Contain already shows the whole photo'
-                }
+                title={cell.fit === 'cover' ? t('detectHeadsCoverTitle') : t('detectHeadsContainTitle')}
                 className="w-full rounded-md border border-emerald-800 bg-emerald-600/10 px-2 py-1.5 text-[11px] font-medium text-emerald-200 transition hover:border-emerald-600 disabled:opacity-40"
               >
-                Detect heads…
+                {t('detectHeadsMenu')}
               </button>
 
               <div className="flex gap-2">
@@ -413,20 +555,18 @@ export default function MergeView({
                   disabled={cell.fit !== 'cover'}
                   className="flex-1 rounded-md border border-neutral-800 px-2 py-1.5 text-[11px] text-neutral-300 transition hover:border-neutral-600 disabled:opacity-40"
                 >
-                  Recentre
+                  {t('recentre')}
                 </button>
                 <button
                   onClick={() => onCellChange(selected, { photoId: null })}
                   className="flex-1 rounded-md border border-neutral-800 px-2 py-1.5 text-[11px] text-neutral-300 transition hover:border-red-800 hover:text-red-300"
                 >
-                  Clear
+                  {t('clear')}
                 </button>
               </div>
             </>
           ) : (
-            <p className="text-[11px] leading-snug text-neutral-600">
-              This cell is empty. Click a photo in the library to place it here.
-            </p>
+            <p className="text-[11px] leading-snug text-neutral-600">{t('emptyCellHint')}</p>
           )}
         </div>
       </aside>
