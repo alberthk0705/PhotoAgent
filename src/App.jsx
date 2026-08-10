@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import PhotoLibrary from './components/PhotoLibrary.jsx'
 import MergeView from './components/MergeView.jsx'
 import CropTool from './components/CropTool.jsx'
@@ -16,6 +16,7 @@ import {
   supported as storageSupported,
 } from './lib/store.js'
 import { formatStampDate } from './lib/exif.js'
+import { classifyPhoto } from './lib/tags.js'
 import { LANGUAGES, useT } from './lib/i18n.jsx'
 
 export default function App() {
@@ -27,6 +28,23 @@ export default function App() {
   const [dragging, setDragging] = useState(false)
   const [restoring, setRestoring] = useState(storageSupported)
   const [storageNote, setStorageNote] = useState(storageSupported ? '' : 'storageOff')
+
+  const [autoTag, setAutoTag] = useState(() => {
+    try {
+      return localStorage.getItem('photoagent.autotag') !== 'off'
+    } catch {
+      return true
+    }
+  })
+  const [tagging, setTagging] = useState(0)
+  const [tagError, setTagError] = useState(false)
+
+  // Refs so the background worker always sees current values without
+  // being torn down and rebuilt every render.
+  const photosRef = useRef([])
+  const autoTagRef = useRef(autoTag)
+  const tagQueue = useRef([])
+  const tagRunning = useRef(false)
 
   // Composite settings — kept here so switching tabs never loses the layout.
   const [layout, setLayout] = useState('1x2')
@@ -44,6 +62,70 @@ export default function App() {
     margin: 32,
     size: 4,
   })
+
+  useEffect(() => {
+    autoTagRef.current = autoTag
+  }, [autoTag])
+
+  /**
+   * Classify queued photos one at a time in the background. Sequential on
+   * purpose: tagging must never make importing or dragging feel slow.
+   */
+  const drainTags = useCallback(async () => {
+    if (tagRunning.current) return
+    tagRunning.current = true
+    try {
+      while (tagQueue.current.length) {
+        const photo = tagQueue.current[0]
+        try {
+          const tags = await classifyPhoto(photo)
+          setPhotos((prev) => prev.map((p) => (p.id === photo.id ? { ...p, tags } : p)))
+          if (storageSupported) putPhoto({ ...photo, tags }).catch(() => {})
+        } catch {
+          // The model is unavailable (offline, blocked). Failing once per photo
+          // would just repeat the same error, so stop and say so.
+          tagQueue.current = []
+          setTagError(true)
+          break
+        }
+        tagQueue.current.shift()
+        setTagging(tagQueue.current.length)
+      }
+    } finally {
+      tagRunning.current = false
+      setTagging(tagQueue.current.length)
+    }
+  }, [])
+
+  const enqueueTagging = useCallback(
+    (list) => {
+      const pending = list.filter((p) => !p.tags)
+      if (!pending.length) return
+      tagQueue.current.push(...pending)
+      setTagging(tagQueue.current.length)
+      drainTags()
+    },
+    [drainTags],
+  )
+
+  const changeAutoTag = useCallback(
+    (on) => {
+      setAutoTag(on)
+      try {
+        localStorage.setItem('photoagent.autotag', on ? 'on' : 'off')
+      } catch {
+        // private browsing — the choice just won't survive a reload
+      }
+      if (on) {
+        setTagError(false)
+        enqueueTagging(photosRef.current) // catch up on anything imported while off
+      } else {
+        tagQueue.current = []
+        setTagging(0)
+      }
+    },
+    [enqueueTagging],
+  )
 
   const persistPhotos = useCallback(async (added) => {
     if (!storageSupported) return
@@ -70,6 +152,7 @@ export default function App() {
         if (cancelled) return
         if (restored.length) reserveSeq(Math.max(...restored.map((p) => p.seq)))
         setPhotos(restored)
+        if (autoTagRef.current) enqueueTagging(restored) // tag anything stored before
 
         if (saved) {
           const live = new Set(restored.map((p) => p.id))
@@ -132,7 +215,8 @@ export default function App() {
     setDate((prev) => (prev.text ? prev : { ...prev, text: formatStampDate(added[0].date) }))
 
     persistPhotos(added)
-  }, [persistPhotos])
+    if (autoTagRef.current) enqueueTagging(added)
+  }, [persistPhotos, enqueueTagging])
 
   const importFiles = useCallback(
     async (fileList) => {
@@ -215,6 +299,10 @@ export default function App() {
     }
   }, [importFiles])
 
+  useEffect(() => {
+    photosRef.current = photos
+  }, [photos])
+
   const cropTarget = photos.find((p) => p.id === cropId) ?? null
 
   return (
@@ -272,6 +360,10 @@ export default function App() {
           restoring={restoring}
           storageNote={storageNote}
           onClear={clearLibrary}
+          autoTag={autoTag}
+          onAutoTagChange={changeAutoTag}
+          tagging={tagging}
+          tagError={tagError}
         />
 
         <main className="min-w-0 flex-1 overflow-auto">

@@ -5,6 +5,8 @@
 // Everything here is loaded on first use so the ~3.5 MB runtime costs nothing to
 // visitors who never press "Detect heads".
 
+import { downscaleForModel } from './images.js'
+
 const BASE = import.meta.env.BASE_URL
 
 // BlazeFace short-range is trained on small inputs; feeding it a 6000 px photo is
@@ -36,20 +38,6 @@ function loadDetector() {
   })
 
   return detectorPromise
-}
-
-function downscale(img) {
-  const longest = Math.max(img.naturalWidth, img.naturalHeight)
-  const scale = Math.min(1, MAX_DETECT_SIZE / longest)
-  if (scale === 1) return { source: img, scale: 1 }
-
-  const canvas = document.createElement('canvas')
-  canvas.width = Math.round(img.naturalWidth * scale)
-  canvas.height = Math.round(img.naturalHeight * scale)
-  const ctx = canvas.getContext('2d')
-  ctx.imageSmoothingQuality = 'high'
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-  return { source: canvas, scale }
 }
 
 function clampBox(box, imgW, imgH) {
@@ -84,7 +72,7 @@ function faceToHead(detection, scale, imgW, imgH) {
  */
 export async function detectHeads(photo) {
   const detector = await loadDetector()
-  const { source, scale } = downscale(photo.img)
+  const { source, scale } = downscaleForModel(photo.img, MAX_DETECT_SIZE)
   const result = detector.detect(source)
   return (result.detections ?? [])
     .map((d) => faceToHead(d, scale, photo.width, photo.height))

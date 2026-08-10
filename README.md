@@ -71,6 +71,21 @@ from this site rather than a CDN — so detection, like everything else, happens
 - "Save crop as new photo" adds the cropped region to the library as a separate photo — the original is
   untouched, and the crop is immediately available for merging. "Download PNG" saves it to disk instead.
 
+## Tags
+
+Imported photos are classified on-device and tagged automatically, and the library can be filtered by tag —
+type in the filter box, or click one of the tag chips (each shows how many photos carry it). The switch in the
+library footer turns auto-tagging off; turning it back on catches up on anything imported meanwhile.
+
+It uses MediaPipe's EfficientNet-Lite0 classifier (1000 ImageNet labels, int8, 5.2 MB), sharing the WASM runtime
+already shipped for head detection, so the model file is the only extra download — and only for people who import
+with tagging on. Classification runs in a background queue, one photo at a time, so importing never stalls.
+
+**Known limitation: ImageNet has no "person" class.** Photos of people are therefore matched to whatever object
+is nearest and produce nonsense — observed on real portraits: `band aid`, `brassiere`, `dumbbell`. On everything
+else it is genuinely good: `labrador retriever`, `sea lion`, `alp`, `pug`, `pickup`. If people need to be tagged,
+the fix is to add the COCO object detector (EfficientDet-Lite0, 4.4 MB), whose first class is `person`.
+
 ## Persistence
 
 The library and the in-progress collage are kept in IndexedDB, so a reload — or iPadOS discarding the tab under
@@ -117,6 +132,7 @@ src/
     exif.js                  capture date from JPEG EXIF, and the stamp's date formatting
     store.js                 IndexedDB persistence for the library and composite state
     faces.js                 MediaPipe head detection, loaded on demand
+    tags.js                  MediaPipe image classification, tag index and filtering
     useHeadDetection.js      per-photo detection state for both views
     i18n.jsx                 translations and the language provider
 ```

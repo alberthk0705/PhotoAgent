@@ -9,6 +9,24 @@ export function reserveSeq(seq) {
   counter = Math.max(counter, seq)
 }
 
+/**
+ * A downscaled copy for model input. These models are trained on small images;
+ * feeding them a 6000 px photo costs time and buys no accuracy.
+ */
+export function downscaleForModel(img, maxSize) {
+  const longest = Math.max(img.naturalWidth, img.naturalHeight)
+  const scale = Math.min(1, maxSize / longest)
+  if (scale === 1) return { source: img, scale: 1 }
+
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.max(1, Math.round(img.naturalWidth * scale))
+  canvas.height = Math.max(1, Math.round(img.naturalHeight * scale))
+  const ctx = canvas.getContext('2d')
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+  return { source: canvas, scale }
+}
+
 function loadImage(url) {
   return new Promise((resolve, reject) => {
     const img = new Image()
@@ -37,12 +55,14 @@ export async function photoFromBlob(blob, name, date = null, seq = null) {
     height: img.naturalHeight,
     date,
     blob,
+    tags: null, // null = not classified yet, [] = classified and found nothing
   }
 }
 
 /** Rebuild a photo from its stored record. */
-export function photoFromRecord(record) {
-  return photoFromBlob(record.blob, record.name, record.date ?? null, record.seq)
+export async function photoFromRecord(record) {
+  const photo = await photoFromBlob(record.blob, record.name, record.date ?? null, record.seq)
+  return { ...photo, tags: record.tags ?? null }
 }
 
 /** Restore many records, skipping any that fail to decode. */

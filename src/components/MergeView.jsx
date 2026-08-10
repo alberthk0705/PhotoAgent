@@ -508,6 +508,7 @@ export default function MergeView({
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
+              aria-label="date stamp"
               checked={date.enabled}
               onChange={(e) => onDateChange({ enabled: e.target.checked })}
               className="h-3.5 w-3.5 accent-indigo-500"

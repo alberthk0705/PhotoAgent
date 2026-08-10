@@ -60,7 +60,14 @@ function tx(store, mode, fn) {
 
 /** Strip the runtime-only fields; Blob and Date both survive structured clone. */
 export function toRecord(photo) {
-  return { id: photo.id, seq: photo.seq, name: photo.name, date: photo.date, blob: photo.blob }
+  return {
+    id: photo.id,
+    seq: photo.seq,
+    name: photo.name,
+    date: photo.date,
+    blob: photo.blob,
+    tags: photo.tags ?? null,
+  }
 }
 
 export function putPhoto(photo) {
