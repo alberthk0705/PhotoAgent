@@ -2,8 +2,19 @@ import { useCallback, useEffect, useState } from 'react'
 import PhotoLibrary from './components/PhotoLibrary.jsx'
 import MergeView from './components/MergeView.jsx'
 import CropTool from './components/CropTool.jsx'
-import { cellCount, makeCell } from './lib/compose.js'
-import { photosFromFiles, releasePhoto } from './lib/images.js'
+import { LAYOUTS, cellCount, makeCell } from './lib/compose.js'
+import { photosFromFiles, photosFromRecords, releasePhoto, reserveSeq } from './lib/images.js'
+import {
+  allPhotoRecords,
+  clearMeta,
+  clearPhotos,
+  deletePhotoRecord,
+  getMeta,
+  isQuotaError,
+  putMeta,
+  putPhoto,
+  supported as storageSupported,
+} from './lib/store.js'
 import { formatStampDate } from './lib/exif.js'
 import { LANGUAGES, useT } from './lib/i18n.jsx'
 
@@ -14,6 +25,8 @@ export default function App() {
   const [tab, setTab] = useState('merge')
   const [cropId, setCropId] = useState(null)
   const [dragging, setDragging] = useState(false)
+  const [restoring, setRestoring] = useState(storageSupported)
+  const [storageNote, setStorageNote] = useState(storageSupported ? '' : 'storageOff')
 
   // Composite settings — kept here so switching tabs never loses the layout.
   const [layout, setLayout] = useState('1x2')
@@ -31,6 +44,65 @@ export default function App() {
     margin: 32,
     size: 4,
   })
+
+  const persistPhotos = useCallback(async (added) => {
+    if (!storageSupported) return
+    try {
+      for (const photo of added) await putPhoto(photo)
+    } catch (err) {
+      // Losing persistence is not worth losing the photo that is already in
+      // memory — carry on and say so.
+      setStorageNote(isQuotaError(err) ? 'storageFull' : 'storageOff')
+    }
+  }, [])
+
+  // Restore whatever the last session left behind.
+  useEffect(() => {
+    if (!storageSupported) return
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        const [records, saved] = await Promise.all([allPhotoRecords(), getMeta('composite')])
+        if (cancelled) return
+
+        const restored = await photosFromRecords(records)
+        if (cancelled) return
+        if (restored.length) reserveSeq(Math.max(...restored.map((p) => p.seq)))
+        setPhotos(restored)
+
+        if (saved) {
+          const live = new Set(restored.map((p) => p.id))
+          const layoutKey = LAYOUTS[saved.layout] ? saved.layout : '1x2'
+          const savedCells = saved.cells ?? []
+          setLayout(layoutKey)
+          // Rebuild to the layout's own cell count, and drop any id whose photo
+          // failed to restore — a dangling id would render a "filled" cell that
+          // never shows anything.
+          setCells(
+            Array.from({ length: cellCount(layoutKey) }, (_, i) => {
+              const c = savedCells[i] ?? {}
+              return { ...makeCell(), ...c, photoId: live.has(c.photoId) ? c.photoId : null }
+            }),
+          )
+          setSelected(0)
+          if (saved.output) setOutput(saved.output)
+          if (typeof saved.gap === 'number') setGap(saved.gap)
+          if (typeof saved.padding === 'number') setPadding(saved.padding)
+          if (saved.bgColor) setBgColor(saved.bgColor)
+          if (saved.date) setDate((prev) => ({ ...prev, ...saved.date }))
+        }
+      } catch {
+        if (!cancelled) setStorageNote('storageOff')
+      } finally {
+        if (!cancelled) setRestoring(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const changeLayout = useCallback((next) => {
     const n = cellCount(next)
@@ -58,7 +130,9 @@ export default function App() {
     // Seed the stamp from the first photo that arrives; never overwrite a value
     // the user has already set.
     setDate((prev) => (prev.text ? prev : { ...prev, text: formatStampDate(added[0].date) }))
-  }, [])
+
+    persistPhotos(added)
+  }, [persistPhotos])
 
   const importFiles = useCallback(
     async (fileList) => {
@@ -75,6 +149,18 @@ export default function App() {
     })
     setCells((prev) => prev.map((c) => (c.photoId === id ? { ...c, photoId: null } : c)))
     setCropId((c) => (c === id ? null : c))
+    if (storageSupported) deletePhotoRecord(id).catch(() => {})
+  }, [])
+
+  const clearLibrary = useCallback(() => {
+    setPhotos((prev) => {
+      prev.forEach(releasePhoto)
+      return []
+    })
+    setCells((prev) => prev.map((c) => ({ ...c, photoId: null })))
+    setCropId(null)
+    setDate((prev) => ({ ...prev, text: '' }))
+    if (storageSupported) Promise.all([clearPhotos(), clearMeta()]).catch(() => {})
   }, [])
 
   const assignToSelectedCell = useCallback(
@@ -92,6 +178,16 @@ export default function App() {
     setCropId(id)
     setTab('crop')
   }, [])
+
+  // Save the composite settings shortly after they settle, so dragging a
+  // slider doesn't mean a write per frame.
+  useEffect(() => {
+    if (!storageSupported || restoring) return
+    const id = setTimeout(() => {
+      putMeta('composite', { layout, cells, output, gap, padding, bgColor, date }).catch(() => {})
+    }, 400)
+    return () => clearTimeout(id)
+  }, [restoring, layout, cells, output, gap, padding, bgColor, date])
 
   // Drag a file anywhere onto the window to import it.
   useEffect(() => {
@@ -173,6 +269,9 @@ export default function App() {
           onPick={tab === 'merge' ? assignToSelectedCell : setCropId}
           activeId={tab === 'crop' ? cropId : cells[selected]?.photoId}
           hint={tab === 'merge' ? t('hintPlaceInCell', { n: selected + 1 }) : t('hintClickToCrop')}
+          restoring={restoring}
+          storageNote={storageNote}
+          onClear={clearLibrary}
         />
 
         <main className="min-w-0 flex-1 overflow-auto">

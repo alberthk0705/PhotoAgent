@@ -1,9 +1,42 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useT } from '../lib/i18n.jsx'
+import { supported as storageSupported, usage } from '../lib/store.js'
 
-export default function PhotoLibrary({ photos, onImport, onDelete, onCrop, onPick, activeId, hint }) {
+function formatBytes(bytes) {
+  if (!bytes) return ''
+  const mb = bytes / 1024 / 1024
+  return mb >= 1 ? ` · ${mb.toFixed(1)} MB` : ` · ${Math.round(bytes / 1024)} KB`
+}
+
+export default function PhotoLibrary({
+  photos,
+  onImport,
+  onDelete,
+  onCrop,
+  onPick,
+  activeId,
+  hint,
+  restoring,
+  storageNote,
+  onClear,
+}) {
   const { t } = useT()
   const inputRef = useRef(null)
+  const [size, setSize] = useState(null)
+
+  // Re-estimate whenever the library changes; the number is indicative, and
+  // browsers report it with deliberate imprecision.
+  useEffect(() => {
+    if (!storageSupported || !photos.length) {
+      setSize(null)
+      return
+    }
+    let cancelled = false
+    usage().then((bytes) => !cancelled && setSize(bytes))
+    return () => {
+      cancelled = true
+    }
+  }, [photos.length])
 
   return (
     <aside className="flex w-full shrink-0 flex-col border-b border-neutral-800 bg-neutral-950 lg:h-full lg:w-64 lg:border-b-0 lg:border-r">
@@ -29,7 +62,9 @@ export default function PhotoLibrary({ photos, onImport, onDelete, onCrop, onPic
       </div>
 
       <div className="min-h-0 flex-1 overflow-x-auto p-3 lg:overflow-x-hidden lg:overflow-y-auto">
-        {photos.length === 0 ? (
+        {restoring ? (
+          <p className="mt-6 text-center text-[11px] text-neutral-600">{t('restoring')}</p>
+        ) : photos.length === 0 ? (
           <p className="mt-6 text-center text-[11px] leading-relaxed text-neutral-600">
             {t('noPhotos')}
             <br />
@@ -73,6 +108,24 @@ export default function PhotoLibrary({ photos, onImport, onDelete, onCrop, onPic
               </li>
             ))}
           </ul>
+        )}
+      </div>
+
+      <div className="border-t border-neutral-800 p-3 text-[10px] leading-snug">
+        {storageNote ? (
+          <p className="text-amber-500">{t(storageNote)}</p>
+        ) : (
+          photos.length > 0 && <p className="text-neutral-600">{t('savedOnDevice', { size: formatBytes(size) })}</p>
+        )}
+        {photos.length > 0 && (
+          <button
+            onClick={() => {
+              if (window.confirm(t('clearConfirm', { n: photos.length }))) onClear()
+            }}
+            className="mt-2 w-full rounded-md border border-neutral-800 px-2 py-1.5 text-[11px] text-neutral-400 transition hover:border-red-800 hover:text-red-300"
+          >
+            {t('clearLibrary')}
+          </button>
         )}
       </div>
     </aside>

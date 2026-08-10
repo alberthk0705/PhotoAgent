@@ -1,7 +1,13 @@
 import { readCaptureDate } from './exif.js'
 
+// Sequence numbers double as ids and as the restore order after a reload.
 let counter = 0
-const nextId = () => `p${++counter}`
+const nextSeq = () => ++counter
+
+/** After restoring, resume numbering past whatever was already stored. */
+export function reserveSeq(seq) {
+  counter = Math.max(counter, seq)
+}
 
 function loadImage(url) {
   return new Promise((resolve, reject) => {
@@ -12,19 +18,37 @@ function loadImage(url) {
   })
 }
 
-/** Turn a File (or Blob) into a photo record the rest of the app understands. */
-export async function photoFromBlob(blob, name, date = null) {
+/**
+ * Turn a File (or Blob) into a photo record the rest of the app understands.
+ * The original blob is kept on the record so the photo can be persisted and
+ * restored without ever re-encoding it.
+ */
+export async function photoFromBlob(blob, name, date = null, seq = null) {
+  const s = seq ?? nextSeq()
   const url = URL.createObjectURL(blob)
   const img = await loadImage(url)
   return {
-    id: nextId(),
+    id: `p${s}`,
+    seq: s,
     name,
     url,
     img,
     width: img.naturalWidth,
     height: img.naturalHeight,
     date,
+    blob,
   }
+}
+
+/** Rebuild a photo from its stored record. */
+export function photoFromRecord(record) {
+  return photoFromBlob(record.blob, record.name, record.date ?? null, record.seq)
+}
+
+/** Restore many records, skipping any that fail to decode. */
+export async function photosFromRecords(records) {
+  const settled = await Promise.allSettled(records.map(photoFromRecord))
+  return settled.filter((r) => r.status === 'fulfilled').map((r) => r.value)
 }
 
 async function photoFromFile(file) {

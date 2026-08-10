@@ -27,8 +27,8 @@ use `base: '/'`.
 
 ## What it does
 
-**Library** — import photos with the button, or drop files anywhere on the window. Photos stay in memory for the
-session; "Remove" clears one out (and empties any cell using it).
+**Library** — import photos with the button, or drop files anywhere on the window. "Remove" clears one out (and
+empties any cell using it); "Clear library" removes everything from the device.
 
 **Merge**
 
@@ -66,6 +66,19 @@ from this site rather than a CDN — so detection, like everything else, happens
 - "Save crop as new photo" adds the cropped region to the library as a separate photo — the original is
   untouched, and the crop is immediately available for merging. "Download PNG" saves it to disk instead.
 
+## Persistence
+
+The library and the in-progress collage are kept in IndexedDB, so a reload — or iPadOS discarding the tab under
+memory pressure — doesn't lose your work. Photos are stored as their original Blobs; re-encoding would cost
+quality and EXIF for nothing. Cell assignments, layout, output size, spacing, colours and the date stamp are saved
+alongside them, debounced so dragging a slider isn't a write per frame.
+
+This is ordinary per-origin browser storage on your own device — nothing is uploaded.
+
+Failure modes are handled rather than ignored: a photo whose blob won't decode is skipped, and any cell pointing at
+it is emptied instead of left with a dangling reference. If the quota is exceeded, or the browser blocks storage
+entirely (private browsing), the app keeps working in memory and says so in the library footer.
+
 ## On tablets and phones
 
 The layout stacks below 1024 px: the library becomes a horizontal strip, the settings panel moves under the
@@ -97,6 +110,7 @@ src/
     compose.js               layout geometry + canvas rendering (shared by preview and export)
     images.js                file → photo records, canvas → blob/download helpers
     exif.js                  capture date from JPEG EXIF, and the stamp's date formatting
+    store.js                 IndexedDB persistence for the library and composite state
     faces.js                 MediaPipe head detection, loaded on demand
     useHeadDetection.js      per-photo detection state for both views
     i18n.jsx                 translations and the language provider

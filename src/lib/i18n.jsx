@@ -18,6 +18,12 @@ const STRINGS = {
 
     // library
     importPhotos: 'Import photos',
+    restoring: 'Restoring your library…',
+    clearLibrary: 'Clear library',
+    clearConfirm: 'Remove all {n} photos from this device? This cannot be undone.',
+    savedOnDevice: 'Saved on this device{size}',
+    storageFull: "Storage is full — new photos won't survive a reload.",
+    storageOff: "This browser isn't saving photos, so they'll be lost on reload.",
     noPhotos: 'No photos yet.',
     noPhotosHint: 'Import, or drop files anywhere.',
     crop: 'Crop',
@@ -128,6 +134,12 @@ const STRINGS = {
 
     // library
     importPhotos: '匯入照片',
+    restoring: '正在還原照片庫…',
+    clearLibrary: '清空照片庫',
+    clearConfirm: '要從這台裝置移除全部 {n} 張照片嗎？此動作無法復原。',
+    savedOnDevice: '已儲存在這台裝置{size}',
+    storageFull: '儲存空間已滿，新照片在重新整理後不會保留。',
+    storageOff: '此瀏覽器未儲存照片，重新整理後將會遺失。',
     noPhotos: '尚未匯入照片。',
     noPhotosHint: '請按上方按鈕，或將檔案拖曳至任意處。',
     crop: '裁切',
