@@ -3,7 +3,7 @@
 Snapshot of where the project stands. `README.md` covers how it works; this file covers what is done, what is
 known-broken, and what is worth doing next.
 
-**Last updated:** 2026-09-02 · **Head:** `8c2b702` · **Live:** https://alberthk0705.github.io/PhotoAgent/
+**Last updated:** 2026-09-02 · **Head:** `72a3310` · **Live:** https://alberthk0705.github.io/PhotoAgent/
 
 ## At a glance
 
