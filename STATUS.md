@@ -3,7 +3,7 @@
 Snapshot of where the project stands. `README.md` covers how it works; this file covers what is done, what is
 known-broken, and what is worth doing next.
 
-**Last updated:** 2026-09-02 · **Head:** `72a3310` · **Live:** https://alberthk0705.github.io/PhotoAgent/
+**Last updated:** 2026-09-02 · **Head:** `a3deb37` · **Live:** https://alberthk0705.github.io/PhotoAgent/
 
 ## At a glance
 
@@ -12,7 +12,7 @@ known-broken, and what is worth doing next.
 | Repository | `alberthk0705/PhotoAgent` — **public** |
 | Hosting | GitHub Pages, deployed by Actions on every push to `main` |
 | Last deploy | ✅ success (`c6392b3`) |
-| Commits | 8 |
+| Commits | 10 |
 | Stack | React 19 · Vite 8 · Tailwind 4 · MediaPipe tasks-vision |
 | Server-side code | None. Everything runs in the browser; no image ever leaves the device |
 
