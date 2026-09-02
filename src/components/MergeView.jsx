@@ -7,6 +7,7 @@ import {
   clampZoom,
   dateAnchor,
   dateStampRect,
+  dateStampText,
   focalPointForBox,
   minZoom,
   renderComposite,
@@ -87,6 +88,8 @@ export default function MergeView({
   onBgColorChange,
   date,
   onDateChange,
+  exportIndex,
+  onExported,
 }) {
   const { t } = useT()
   const canvasRef = useRef(null)
@@ -376,6 +379,7 @@ export default function MergeView({
 
   const swapPhoto = swap ? photoFor(swap.from) : null
   const freePosition = Number.isFinite(date.x) && Number.isFinite(date.y)
+  const stampText = dateStampText(date)
 
   /** Slider and buttons zoom about the cell centre. */
   function setZoom(index, zoom) {
@@ -408,13 +412,20 @@ export default function MergeView({
     setPicking(false)
   }
 
+  const exportName = (n) => `merged-${layout}-${output.width}x${output.height}-${String(n).padStart(3, '0')}`
+
   async function exportImage() {
     setBusy(true)
     try {
       const canvas = document.createElement('canvas')
       renderComposite(canvas, spec, 1)
       const blob = await canvasToBlob(canvas, 'image/png')
-      if (blob) downloadBlob(blob, `merged-${layout}-${output.width}x${output.height}.png`)
+      if (!blob) return
+      // Every export gets its own number. Without it a second export of the
+      // same layout and size reuses the first one's name, and the browser
+      // either overwrites it or silently renames it to "(1)".
+      downloadBlob(blob, `${exportName(exportIndex)}.png`)
+      onExported()
     } finally {
       setBusy(false)
     }
@@ -528,6 +539,7 @@ export default function MergeView({
         <footer className="mt-4 flex items-center gap-4">
           <button
             onClick={exportImage}
+            title={t('exportAs', { name: `${exportName(exportIndex)}.png` })}
             disabled={filled === 0 || busy || rects.length === 0}
             className="rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-neutral-800 disabled:text-neutral-500"
           >
@@ -691,7 +703,17 @@ export default function MergeView({
                   ✕
                 </button>
               </div>
-              <p className="font-mono text-[11px] text-neutral-400">{date.text || '—'}</p>
+              <Field label={t('dateExtra')}>
+                <input
+                  type="text"
+                  value={date.suffix ?? ''}
+                  placeholder={t('dateExtraPlaceholder')}
+                  maxLength={64}
+                  onChange={(e) => onDateChange({ suffix: e.target.value })}
+                  className="w-full rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5 text-xs text-neutral-100 outline-none placeholder:text-neutral-600 focus:border-indigo-500"
+                />
+              </Field>
+              <p className="break-words font-mono text-[11px] text-neutral-400">{stampText || '—'}</p>
 
               <div className="flex items-center gap-2">
                 <input
@@ -769,9 +791,10 @@ export default function MergeView({
               <Field label={t('dateSize', { n: date.size })}>
                 <input
                   type="range"
-                  min={1}
-                  max={12}
-                  step={0.5}
+                  aria-label={t('dateSize', { n: date.size })}
+                  min={0.5}
+                  max={20}
+                  step={0.25}
                   value={date.size}
                   onChange={(e) => onDateChange({ size: +e.target.value })}
                   className="w-full"

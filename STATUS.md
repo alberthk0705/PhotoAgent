@@ -24,13 +24,15 @@ known-broken, and what is worth doing next.
   Contain 0.2–8×), anchored on the pointer.
 - **Swapping cells** — a ⠿ handle on each filled cell; drag it onto another cell to trade the two photos, framing
   included, or onto an empty one to move.
-- **Date stamp** — one `yyyy.mm.dd` on the composite, seeded from EXIF capture date, with colour, corner and
-  margin controls; size scales with the export. Draggable on the preview (or nudged with the arrow keys) to any
-  free position, stored as a fraction of the output; a corner button puts it back on corner-and-margin placement.
+- **Date stamp** — one `yyyy.mm.dd` on the composite, seeded from EXIF capture date, plus free extra text on the
+  same line; colour, corner, margin and a 0.5–20% size that scales with the export. Draggable on the preview (or
+  nudged with the arrow keys) to any free position, stored as a fraction of the output; a corner button puts it
+  back on corner-and-margin placement.
 - **Crop** — move/resize with aspect locks, rule-of-thirds guides, saves as a new photo or downloads.
 - **Head detection** — MediaPipe BlazeFace; boxes to pick from, "fit all heads" with a largest-head fallback.
 - **Tags** — automatic on-device classification on import, with tag-chip and text filtering of the library.
-- **Persistence** — library and in-progress collage in IndexedDB; survives reload and tab discard.
+- **Persistence** — library and in-progress collage in IndexedDB; survives reload and tab discard, including the
+  export counter that numbers each exported PNG.
 - **Languages** — English and Traditional Chinese, following the browser, remembered across reloads.
 - **Touch** — stacked layout below 1024 px, touch-action on drag surfaces, finger-sized crop handles.
 

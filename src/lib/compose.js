@@ -196,6 +196,15 @@ export function dateAnchor(date, W, H, scale = 1) {
   }
 }
 
+/**
+ * What the stamp actually reads. The extra text rides on the same line as the
+ * date and shares its size, so the two stay one caption; either half alone is
+ * a valid stamp.
+ */
+export function dateStampText(date) {
+  return [date?.text, date?.suffix].map((part) => (part ?? '').trim()).filter(Boolean).join(' ')
+}
+
 let measurer = null
 
 /**
@@ -206,13 +215,14 @@ let measurer = null
  * Returns null when no stamp is drawn.
  */
 export function dateStampRect(date, W, H, scale = 1) {
-  if (!date?.enabled || !date.text) return null
+  const text = dateStampText(date)
+  if (!date?.enabled || !text) return null
 
   const fontSize = dateFontSize(W, H, date.size)
   if (!measurer) measurer = document.createElement('canvas').getContext('2d')
   measurer.font = dateFontCss(fontSize)
 
-  const w = measurer.measureText(date.text).width
+  const w = measurer.measureText(text).width
   const h = fontSize * 1.2
   const a = dateAnchor(date, W, H, scale)
   return {
@@ -227,7 +237,8 @@ export function dateStampRect(date, W, H, scale = 1) {
  * Date stamp, drawn last so it sits above photos and borders alike.
  */
 function drawDateStamp(ctx, W, H, date, scale) {
-  if (!date?.enabled || !date.text) return
+  const text = dateStampText(date)
+  if (!date?.enabled || !text) return
 
   const fontSize = dateFontSize(W, H, date.size)
   const a = dateAnchor(date, W, H, scale)
@@ -243,7 +254,7 @@ function drawDateStamp(ctx, W, H, date, scale) {
   ctx.shadowBlur = Math.max(1, fontSize * 0.12)
   ctx.shadowOffsetY = Math.max(1, fontSize * 0.04)
 
-  ctx.fillText(date.text, a.x, a.y)
+  ctx.fillText(text, a.x, a.y)
   ctx.restore()
 }
 

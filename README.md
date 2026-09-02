@@ -51,13 +51,17 @@ empties any cell using it); "Clear library" removes everything from the device.
   because dragging the photo itself already means "pan", and one gesture can only mean one thing.
 - Gap (between cells), outer border, and border colour are adjustable.
 - **Date stamp**: one `yyyy.mm.dd` stamp on the finished composite. It is seeded from the first imported photo's
-  EXIF capture date (falling back to the file's timestamp) and can be set to any date you like. Colour and size are
-  adjustable, and the size is a percentage of the output's short side so it scales with the export.
+  EXIF capture date (falling back to the file's timestamp) and can be set to any date you like. An "extra text"
+  field appends anything you want after it — a place, a name, a caption — on the same line, and either half alone
+  is a valid stamp. Colour and size are adjustable; size runs 0.5–20% of the output's short side in 0.25 steps, so
+  it scales with the export and covers everything from a discreet corner mark to a poster caption.
 - **Placing the stamp**: the four corner buttons drop it into that corner at the current margin. Dragging the stamp
   on the preview overrides that with a free position — stored as a fraction of the output, so it survives a change
   of export size — and the arrow keys nudge it (Shift for single pixels). The corner still decides which edge of
   the text is pinned, and clicking any corner button returns the stamp to corner-and-margin placement.
-- Export writes a PNG at the exact output size.
+- Export writes a PNG at the exact output size, named `merged-<layout>-<w>x<h>-<nnn>.png`. The number increments on
+  every export and is stored with the collage, so it keeps counting across a reload rather than handing two
+  different composites the same filename.
 
 **Head detection**
 

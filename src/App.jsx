@@ -54,9 +54,14 @@ export default function App() {
   const [gap, setGap] = useState(16)
   const [padding, setPadding] = useState(16)
   const [bgColor, setBgColor] = useState('#ffffff')
+  // Numbers the exported files so a second export never lands on the first
+  // one's name. Persisted, or a reload would start colliding again.
+  const [exportSeq, setExportSeq] = useState(1)
   const [date, setDate] = useState({
     enabled: true,
     text: '',
+    // Whatever the user wants after the date — a place, a name, a caption.
+    suffix: '',
     color: '#ff9d2e',
     corner: 'br',
     margin: 32,
@@ -177,6 +182,7 @@ export default function App() {
           if (typeof saved.gap === 'number') setGap(saved.gap)
           if (typeof saved.padding === 'number') setPadding(saved.padding)
           if (saved.bgColor) setBgColor(saved.bgColor)
+          if (typeof saved.exportSeq === 'number') setExportSeq(saved.exportSeq)
           if (saved.date) setDate((prev) => ({ ...prev, ...saved.date }))
         }
       } catch {
@@ -287,10 +293,10 @@ export default function App() {
   useEffect(() => {
     if (!storageSupported || restoring) return
     const id = setTimeout(() => {
-      putMeta('composite', { layout, cells, output, gap, padding, bgColor, date }).catch(() => {})
+      putMeta('composite', { layout, cells, output, gap, padding, bgColor, date, exportSeq }).catch(() => {})
     }, 400)
     return () => clearTimeout(id)
-  }, [restoring, layout, cells, output, gap, padding, bgColor, date])
+  }, [restoring, layout, cells, output, gap, padding, bgColor, date, exportSeq])
 
   // Drag a file anywhere onto the window to import it.
   useEffect(() => {
@@ -394,6 +400,8 @@ export default function App() {
               cells={cells}
               onCellChange={updateCell}
               onCellsSwap={swapCells}
+              exportIndex={exportSeq}
+              onExported={() => setExportSeq((n) => n + 1)}
               selected={selected}
               onSelect={setSelected}
               output={output}
