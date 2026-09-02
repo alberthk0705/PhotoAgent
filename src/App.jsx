@@ -61,6 +61,10 @@ export default function App() {
     corner: 'br',
     margin: 32,
     size: 4,
+    // Set by dragging the stamp on the preview; null means "wherever the
+    // corner and margin put it".
+    x: null,
+    y: null,
   })
 
   useEffect(() => {
@@ -199,6 +203,21 @@ export default function App() {
   }, [])
 
   const updateDate = useCallback((patch) => setDate((prev) => ({ ...prev, ...patch })), [])
+
+  /**
+   * Trade two cells' contents. Framing travels with the photo, so a swap moves
+   * each one exactly as it was framed rather than resetting it — the cells are
+   * the same size in every layout, so the framing still means what it did.
+   */
+  const swapCells = useCallback((a, b) => {
+    setCells((prev) => {
+      if (a === b || !prev[a] || !prev[b]) return prev
+      const next = [...prev]
+      next[a] = prev[b]
+      next[b] = prev[a]
+      return next
+    })
+  }, [])
 
   const addPhotos = useCallback((added) => {
     if (!added.length) return
@@ -374,6 +393,7 @@ export default function App() {
               onLayoutChange={changeLayout}
               cells={cells}
               onCellChange={updateCell}
+              onCellsSwap={swapCells}
               selected={selected}
               onSelect={setSelected}
               output={output}

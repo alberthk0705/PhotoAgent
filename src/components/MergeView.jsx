@@ -5,6 +5,8 @@ import {
   cellGeometry,
   cellRects,
   clampZoom,
+  dateAnchor,
+  dateStampRect,
   focalPointForBox,
   minZoom,
   renderComposite,
@@ -72,6 +74,7 @@ export default function MergeView({
   onLayoutChange,
   cells,
   onCellChange,
+  onCellsSwap,
   selected,
   onSelect,
   output,
@@ -91,6 +94,10 @@ export default function MergeView({
   const previewRef = useRef(null)
   const pointers = useRef(new Map()) // live pointers, so two fingers can pinch
   const gesture = useRef(null)
+  const dateDrag = useRef(null)
+  const swapFrom = useRef(null)
+  // Mirrored in state only because the ghost and the drop highlight have to render.
+  const [swap, setSwap] = useState(null)
   const [box, setBox] = useState({ w: 640, h: 420 })
   const [busy, setBusy] = useState(false)
   const [picking, setPicking] = useState(false)
@@ -266,6 +273,110 @@ export default function MergeView({
     if (pointers.current.size === 0 || gesture.current?.mode === 'pinch') gesture.current = null
   }
 
+  // ---- date stamp, dragged on the preview ----
+
+  const dateRect = useMemo(
+    () => dateStampRect(date, output.width, output.height, 1),
+    [date, output.width, output.height],
+  )
+
+  /**
+   * Pin the stamp's anchor at (ax, ay) in output pixels, keeping the whole
+   * stamp on the canvas. The anchor is an edge of the box, not its centre, so
+   * the clamp is expressed as an offset from the box it belongs to.
+   */
+  function moveDateAnchor(ax, ay) {
+    if (!dateRect) return
+    const W = output.width
+    const H = output.height
+    const a = dateAnchor(date, W, H, 1)
+    const dx = a.x - dateRect.x
+    const dy = a.y - dateRect.y
+    onDateChange({
+      x: Math.min(W - dateRect.w + dx, Math.max(dx, ax)) / W,
+      y: Math.min(H - dateRect.h + dy, Math.max(dy, ay)) / H,
+    })
+  }
+
+  function beginDateDrag(e) {
+    e.stopPropagation()
+    if (!dateRect) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    const a = dateAnchor(date, output.width, output.height, 1)
+    dateDrag.current = { x: e.clientX, y: e.clientY, ax: a.x, ay: a.y }
+  }
+
+  function onDateDragMove(e) {
+    const d = dateDrag.current
+    if (!d) return
+    e.stopPropagation()
+    moveDateAnchor(d.ax + (e.clientX - d.x) / scale, d.ay + (e.clientY - d.y) / scale)
+  }
+
+  function endDateDrag(e) {
+    if (!dateDrag.current) return
+    e.stopPropagation()
+    dateDrag.current = null
+    e.currentTarget.releasePointerCapture?.(e.pointerId)
+  }
+
+  /** Arrow keys nudge the stamp; Shift for single pixels. */
+  function onDateKeyDown(e) {
+    const step = e.shiftKey ? 1 : Math.max(1, Math.round(Math.min(output.width, output.height) * 0.005))
+    const by = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key]
+    if (!by) return
+    e.preventDefault()
+    const a = dateAnchor(date, output.width, output.height, 1)
+    moveDateAnchor(a.x + by[0], a.y + by[1])
+  }
+
+  // ---- swapping two cells by their grab handles ----
+
+  function cellAt(clientX, clientY) {
+    const { px, py } = toOutput(clientX, clientY)
+    return rects.findIndex((r) => px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h)
+  }
+
+  function beginSwap(e, index) {
+    // The handle sits inside the cell, whose own pointerdown starts a pan.
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    swapFrom.current = index
+    onSelect(index)
+    setSwap({ from: index, over: index, x: e.clientX, y: e.clientY })
+  }
+
+  function onSwapMove(e) {
+    if (swapFrom.current === null) return
+    e.stopPropagation()
+    setSwap({ from: swapFrom.current, over: cellAt(e.clientX, e.clientY), x: e.clientX, y: e.clientY })
+  }
+
+  function endSwap(e) {
+    const from = swapFrom.current
+    if (from === null) return
+    e.stopPropagation()
+    swapFrom.current = null
+    setSwap(null)
+    e.currentTarget.releasePointerCapture?.(e.pointerId)
+
+    const target = cellAt(e.clientX, e.clientY)
+    if (target === -1 || target === from) return
+    onCellsSwap(from, target)
+    onSelect(target) // follow the photo, so the panel still describes what you moved
+  }
+
+  function cancelSwap(e) {
+    if (swapFrom.current === null) return
+    e.stopPropagation()
+    swapFrom.current = null
+    setSwap(null)
+    e.currentTarget.releasePointerCapture?.(e.pointerId)
+  }
+
+  const swapPhoto = swap ? photoFor(swap.from) : null
+  const freePosition = Number.isFinite(date.x) && Number.isFinite(date.y)
+
   /** Slider and buttons zoom about the cell centre. */
   function setZoom(index, zoom) {
     const photo = photoFor(index)
@@ -330,6 +441,15 @@ export default function MergeView({
                 const c = cells[i]
                 const hasPhoto = Boolean(c?.photoId)
                 const roomForLabel = r.w * scale > 96 && r.h * scale > 28
+                const roomForHandle = r.w * scale > 56 && r.h * scale > 56
+                const isSource = swap?.from === i
+                const isTarget = Boolean(swap) && swap.over === i && swap.from !== i
+
+                let ring = 'hover:shadow-[inset_0_0_0_2px_rgb(99_102_241/0.4)]'
+                if (isTarget) ring = 'shadow-[inset_0_0_0_3px_rgb(16_185_129)]'
+                else if (isSource) ring = 'shadow-[inset_0_0_0_2px_rgb(16_185_129/0.5)]'
+                else if (selected === i) ring = 'shadow-[inset_0_0_0_2px_rgb(99_102_241)]'
+
                 return (
                   <div
                     key={i}
@@ -350,20 +470,57 @@ export default function MergeView({
                       // instead of panning, and a pinch zooms the page instead of
                       // the photo. Empty cells keep the gesture so they can scroll.
                       hasPhoto ? 'touch-none' : ''
-                    } ${
-                      selected === i
-                        ? 'shadow-[inset_0_0_0_2px_rgb(99_102_241)]'
-                        : 'hover:shadow-[inset_0_0_0_2px_rgb(99_102_241/0.4)]'
-                    }`}
+                    } ${ring} ${isSource ? 'bg-emerald-500/10' : ''}`}
                   >
                     {!hasPhoto && roomForLabel && (
                       <span className="pointer-events-none rounded bg-black/55 px-2 py-1 text-[11px] text-neutral-300">
                         {t('cellEmptyBadge', { n: i + 1 })}
                       </span>
                     )}
+
+                    {/* Dragging the photo itself pans it, so swapping gets its own
+                        handle rather than a modifier key no one would find. */}
+                    {hasPhoto && roomForHandle && (
+                      <button
+                        type="button"
+                        title={t('swapHandle')}
+                        aria-label={t('swapHandle')}
+                        onPointerDown={(e) => beginSwap(e, i)}
+                        onPointerMove={onSwapMove}
+                        onPointerUp={endSwap}
+                        onPointerCancel={cancelSwap}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ cursor: swap ? 'grabbing' : 'grab' }}
+                        className="absolute left-1 top-1 flex h-6 w-6 touch-none items-center justify-center rounded-md bg-black/55 text-xs leading-none text-neutral-100 opacity-60 transition hover:bg-black/80 hover:opacity-100 focus:opacity-100 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                      >
+                        ⠿
+                      </button>
+                    )}
                   </div>
                 )
               })}
+
+              {/* The stamp is painted into the canvas; this is just its grab target. */}
+              {dateRect && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  title={t('dateDragHint')}
+                  aria-label={t('dateDragHint')}
+                  onPointerDown={beginDateDrag}
+                  onPointerMove={onDateDragMove}
+                  onPointerUp={endDateDrag}
+                  onPointerCancel={endDateDrag}
+                  onKeyDown={onDateKeyDown}
+                  style={{
+                    left: dateRect.x * scale - 4,
+                    top: dateRect.y * scale - 4,
+                    width: dateRect.w * scale + 8,
+                    height: dateRect.h * scale + 8,
+                  }}
+                  className="absolute cursor-move touch-none rounded-sm ring-1 ring-transparent transition hover:bg-white/10 hover:ring-white/40 focus:bg-white/10 focus:outline-none focus:ring-indigo-400"
+                />
+              )}
             </div>
           )}
         </div>
@@ -565,7 +722,9 @@ export default function MergeView({
                   {CORNERS.map(([value, key]) => (
                     <button
                       key={value}
-                      onClick={() => onDateChange({ corner: value })}
+                      // Sending the stamp to a corner also drops any dragged
+                      // position, which is how you undo a drag.
+                      onClick={() => onDateChange({ corner: value, x: null, y: null })}
                       className={`rounded-md border px-2 py-1.5 text-[11px] transition ${
                         date.corner === value
                           ? 'border-indigo-500 bg-indigo-600/15 text-indigo-200'
@@ -576,6 +735,22 @@ export default function MergeView({
                     </button>
                   ))}
                 </div>
+                {freePosition && (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-neutral-800 bg-neutral-900 px-2 py-1.5">
+                    <span className="text-[10px] text-neutral-400">
+                      {t('datePositionCustom', {
+                        x: Math.round(date.x * 100),
+                        y: Math.round(date.y * 100),
+                      })}
+                    </span>
+                    <button
+                      onClick={() => onDateChange({ x: null, y: null })}
+                      className="shrink-0 rounded border border-neutral-700 px-1.5 py-0.5 text-[10px] text-neutral-300 transition hover:border-neutral-500 hover:text-neutral-100"
+                    >
+                      {t('datePositionReset')}
+                    </button>
+                  </div>
+                )}
               </div>
 
               <Field label={t('dateMargin', { n: date.margin })}>
@@ -584,7 +759,9 @@ export default function MergeView({
                   min={0}
                   max={200}
                   value={date.margin}
-                  onChange={(e) => onDateChange({ margin: +e.target.value })}
+                  // The margin only places a corner-anchored stamp; a dragged one
+                  // takes the new margin the moment it goes back to a corner.
+                  onChange={(e) => onDateChange({ margin: +e.target.value, x: null, y: null })}
                   className="w-full"
                 />
               </Field>
@@ -685,6 +862,15 @@ export default function MergeView({
           )}
         </div>
       </aside>
+
+      {swap && swapPhoto && (
+        <img
+          src={swapPhoto.url}
+          alt=""
+          style={{ left: swap.x, top: swap.y }}
+          className="pointer-events-none fixed z-50 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-lg border border-white/70 object-cover opacity-85 shadow-xl shadow-black/60"
+        />
+      )}
 
       {picking && cellPhoto && (
         <HeadPicker photo={cellPhoto} onChoose={frameBox} onClose={() => setPicking(false)} />

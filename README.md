@@ -46,10 +46,17 @@ empties any cell using it); "Clear library" removes everything from the device.
   rather than drifting away. Cover stops at 1× — below that it would no longer cover — while Contain goes down to
   0.2×, letting a photo float inside the cell with the border colour around it. "Reset view" returns to 1× and
   centred.
+- **Swapping cells**: every filled cell carries a ⠿ handle in its top-left corner. Drag it onto another cell to
+  trade the two photos — framing travels with each one — or onto an empty cell to move it there. The handle exists
+  because dragging the photo itself already means "pan", and one gesture can only mean one thing.
 - Gap (between cells), outer border, and border colour are adjustable.
 - **Date stamp**: one `yyyy.mm.dd` stamp on the finished composite. It is seeded from the first imported photo's
-  EXIF capture date (falling back to the file's timestamp) and can be set to any date you like. Colour, corner and
-  margin are adjustable, and the size is a percentage of the output's short side so it scales with the export.
+  EXIF capture date (falling back to the file's timestamp) and can be set to any date you like. Colour and size are
+  adjustable, and the size is a percentage of the output's short side so it scales with the export.
+- **Placing the stamp**: the four corner buttons drop it into that corner at the current margin. Dragging the stamp
+  on the preview overrides that with a free position — stored as a fraction of the output, so it survives a change
+  of export size — and the arrow keys nudge it (Shift for single pixels). The corner still decides which edge of
+  the text is pinned, and clicking any corner button returns the stamp to corner-and-margin placement.
 - Export writes a PNG at the exact output size.
 
 **Head detection**
@@ -124,7 +131,7 @@ src/
   App.jsx                    library + composite state, tab switching, window-level drop
   components/
     PhotoLibrary.jsx         thumbnails, import, per-photo actions
-    MergeView.jsx            preview canvas, cell overlays/panning, settings panel
+    MergeView.jsx            preview canvas, cell overlays/panning/swapping, date drag, settings panel
     CropTool.jsx             crop rectangle interaction and export
   lib/
     compose.js               layout geometry + canvas rendering (shared by preview and export)

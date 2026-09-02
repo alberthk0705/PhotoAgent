@@ -70,7 +70,8 @@ const STRINGS = {
     exportPng: 'Export PNG',
     rendering: 'Rendering…',
     cellsFilled: '{filled}/{total} cells filled · output {w} × {h} px',
-    dragHint: ' · drag to reposition, scroll or pinch to zoom',
+    dragHint: ' · drag to reposition, scroll or pinch to zoom, drag ⠿ to swap cells',
+    swapHandle: 'Drag onto another cell to swap the two photos',
     headsDontFit: "All {n} heads don't fit this cell — framed the largest instead.",
 
     // date stamp
@@ -84,6 +85,9 @@ const STRINGS = {
     cornerBL: 'Bottom left',
     cornerBR: 'Bottom right',
     dateMargin: 'Margin — {n} px',
+    dateDragHint: 'Drag the date to place it, or nudge it with the arrow keys',
+    datePositionCustom: 'Placed by hand — {x}% × {y}%',
+    datePositionReset: 'Reset',
     dateSize: 'Size — {n}%',
     dateHelp: "Defaults to the first photo's capture date from EXIF, or its file date. Type over it to set your own.",
 
@@ -194,7 +198,8 @@ const STRINGS = {
     exportPng: '匯出 PNG',
     rendering: '產生中…',
     cellsFilled: '已填 {filled}/{total} 格 · 輸出 {w} × {h} px',
-    dragHint: ' · 拖曳可調整位置，滾動或雙指可縮放',
+    dragHint: ' · 拖曳可調整位置，滾動或雙指可縮放，拖曳 ⠿ 可互換兩格照片',
+    swapHandle: '拖曳到另一格即可互換兩張照片',
     headsDontFit: '{n} 個人頭無法同時放入這一格，已改為對準最大的人頭。',
 
     // date stamp
@@ -208,6 +213,9 @@ const STRINGS = {
     cornerBL: '左下',
     cornerBR: '右下',
     dateMargin: '邊距 — {n} px',
+    dateDragHint: '拖曳日期即可擺放，也可用方向鍵微調',
+    datePositionCustom: '自訂位置 — {x}% × {y}%',
+    datePositionReset: '重設',
     dateSize: '字級 — {n}%',
     dateHelp: '預設採用第一張照片的 EXIF 拍攝日期，若無則使用檔案日期。可自行修改。',
 

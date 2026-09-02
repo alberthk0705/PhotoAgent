@@ -167,21 +167,75 @@ function drawInCell(ctx, img, rect, cell, bgColor) {
   ctx.restore()
 }
 
+const DATE_FONT_STACK = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace'
+
+/** Stamp size is relative to the output's short side, so it survives any export size. */
+export function dateFontSize(W, H, size) {
+  return Math.max(6, Math.round((Math.min(W, H) * size) / 100))
+}
+
+const dateFontCss = (fontSize) => `600 ${fontSize}px ${DATE_FONT_STACK}`
+
+/**
+ * Where the stamp is pinned, and which of its edges the pin holds.
+ *
+ * `x`/`y` are fractions of the output, set by dragging the stamp. While they
+ * are unset the stamp falls back to its corner at `margin`, which is what the
+ * corner buttons restore. The corner keeps deciding the alignment either way,
+ * so a dragged stamp still grows away from the edge it was anchored to.
+ */
+export function dateAnchor(date, W, H, scale = 1) {
+  const right = date.corner === 'tr' || date.corner === 'br'
+  const bottom = date.corner === 'bl' || date.corner === 'br'
+  const margin = (date.margin ?? 0) * scale
+  return {
+    x: Number.isFinite(date.x) ? date.x * W : right ? W - margin : margin,
+    y: Number.isFinite(date.y) ? date.y * H : bottom ? H - margin : margin,
+    align: right ? 'right' : 'left',
+    baseline: bottom ? 'bottom' : 'top',
+  }
+}
+
+let measurer = null
+
+/**
+ * The box the stamp occupies, in the same pixel space as W/H — the grab target
+ * on the preview, and what a drag is clamped against. The height is one em plus
+ * a little: the text is digits and dots in a single monospace weight, so there
+ * is nothing to gain from measuring glyph outlines.
+ * Returns null when no stamp is drawn.
+ */
+export function dateStampRect(date, W, H, scale = 1) {
+  if (!date?.enabled || !date.text) return null
+
+  const fontSize = dateFontSize(W, H, date.size)
+  if (!measurer) measurer = document.createElement('canvas').getContext('2d')
+  measurer.font = dateFontCss(fontSize)
+
+  const w = measurer.measureText(date.text).width
+  const h = fontSize * 1.2
+  const a = dateAnchor(date, W, H, scale)
+  return {
+    x: a.align === 'right' ? a.x - w : a.x,
+    y: a.baseline === 'bottom' ? a.y - h : a.y,
+    w,
+    h,
+  }
+}
+
 /**
  * Date stamp, drawn last so it sits above photos and borders alike.
- * Sizes are relative to the output's short side, so the stamp keeps its
- * proportions whether you export at 800 px or 8000 px.
  */
 function drawDateStamp(ctx, W, H, date, scale) {
   if (!date?.enabled || !date.text) return
 
-  const fontSize = Math.max(6, Math.round((Math.min(W, H) * date.size) / 100))
-  const margin = date.margin * scale
+  const fontSize = dateFontSize(W, H, date.size)
+  const a = dateAnchor(date, W, H, scale)
   ctx.save()
-  ctx.font = `600 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`
+  ctx.font = dateFontCss(fontSize)
   ctx.fillStyle = date.color
-  ctx.textAlign = date.corner === 'tr' || date.corner === 'br' ? 'right' : 'left'
-  ctx.textBaseline = date.corner === 'bl' || date.corner === 'br' ? 'bottom' : 'top'
+  ctx.textAlign = a.align
+  ctx.textBaseline = a.baseline
 
   // A soft dark halo keeps the stamp readable over pale photos without
   // looking like a drop shadow at export size.
@@ -189,9 +243,7 @@ function drawDateStamp(ctx, W, H, date, scale) {
   ctx.shadowBlur = Math.max(1, fontSize * 0.12)
   ctx.shadowOffsetY = Math.max(1, fontSize * 0.04)
 
-  const x = ctx.textAlign === 'right' ? W - margin : margin
-  const y = ctx.textBaseline === 'bottom' ? H - margin : margin
-  ctx.fillText(date.text, x, y)
+  ctx.fillText(date.text, a.x, a.y)
   ctx.restore()
 }
 

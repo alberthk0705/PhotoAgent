@@ -3,7 +3,7 @@
 Snapshot of where the project stands. `README.md` covers how it works; this file covers what is done, what is
 known-broken, and what is worth doing next.
 
-**Last updated:** 2026-08-21 · **Head:** `c6392b3` · **Live:** https://alberthk0705.github.io/PhotoAgent/
+**Last updated:** 2026-09-02 · **Head:** `8c2b702` · **Live:** https://alberthk0705.github.io/PhotoAgent/
 
 ## At a glance
 
@@ -12,7 +12,7 @@ known-broken, and what is worth doing next.
 | Repository | `alberthk0705/PhotoAgent` — **public** |
 | Hosting | GitHub Pages, deployed by Actions on every push to `main` |
 | Last deploy | ✅ success (`c6392b3`) |
-| Commits | 7 |
+| Commits | 8 |
 | Stack | React 19 · Vite 8 · Tailwind 4 · MediaPipe tasks-vision |
 | Server-side code | None. Everything runs in the browser; no image ever leaves the device |
 
@@ -22,8 +22,11 @@ known-broken, and what is worth doing next.
   border and border colour, PNG export at exactly the requested size.
 - **Per-cell framing** — Cover/Contain, drag to reposition, zoom by wheel, pinch or slider (Cover 1–8×,
   Contain 0.2–8×), anchored on the pointer.
+- **Swapping cells** — a ⠿ handle on each filled cell; drag it onto another cell to trade the two photos, framing
+  included, or onto an empty one to move.
 - **Date stamp** — one `yyyy.mm.dd` on the composite, seeded from EXIF capture date, with colour, corner and
-  margin controls; size scales with the export.
+  margin controls; size scales with the export. Draggable on the preview (or nudged with the arrow keys) to any
+  free position, stored as a fraction of the output; a corner button puts it back on corner-and-margin placement.
 - **Crop** — move/resize with aspect locks, rule-of-thirds guides, saves as a new photo or downloads.
 - **Head detection** — MediaPipe BlazeFace; boxes to pick from, "fit all heads" with a largest-head fallback.
 - **Tags** — automatic on-device classification on import, with tag-chip and text filtering of the library.
@@ -35,8 +38,8 @@ known-broken, and what is worth doing next.
 
 | | Size | When it downloads |
 |---|---|---|
-| App bundle | 79.6 kB gzip (250.9 kB raw) | always |
-| CSS | 6.0 kB gzip | always |
+| App bundle | 81.1 kB gzip (255.7 kB raw) | always |
+| CSS | 6.4 kB gzip | always |
 | MediaPipe JS chunk | 45.3 kB gzip | first head-detect or tagging |
 | WASM runtime | 11 MB raw / **3.3 MB gzip** | first head-detect or tagging |
 | Face model | 228 kB | first head-detect |
